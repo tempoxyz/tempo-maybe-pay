@@ -32,6 +32,10 @@ Deployment artifact: `packages/contracts/deployments/42431.json`.
 
 Mainnet is configured in code but not deployed yet.
 
+## Live app
+
+Production: https://tempo-maybe-pay.vercel.app
+
 ## Validation
 
 ```bash
@@ -40,3 +44,5 @@ pnpm --filter @tempo-maybe-pay/web build
 ```
 
 The current testnet smoke test opened an epoch, placed an order, processed it through the API, and minted NFT `#1`.
+
+Production smoke test opened the live app, placed a Moderato order, processed it through Vercel, and minted NFT `#2`.

@@ -10,6 +10,7 @@
     "test": "pnpm --filter @tempo-maybe-pay/contracts test"
   },
   "devDependencies": {
+    "next": "latest",
     "typescript": "^5.9.3"
   }
 }
