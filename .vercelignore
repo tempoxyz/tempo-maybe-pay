@@ -1,0 +1,13 @@
+.next
+apps/web/.next
+node_modules
+apps/web/node_modules
+packages/*/node_modules
+packages/contracts/out
+packages/contracts/cache
+packages/contracts/broadcast
+work
+.env
+.env.*
+!.env.example
+
