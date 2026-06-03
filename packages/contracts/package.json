@@ -1,0 +1,11 @@
+{
+  "name": "@tempo-maybe-pay/contracts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "forge build",
+    "check": "forge build && forge test",
+    "test": "forge test -vvv"
+  }
+}
+

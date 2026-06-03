@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+onlyBuiltDependencies:
+  - sharp
+
+peerDependencyRules:
+  allowedVersions:
+    accounts: "0.12.2"
+allowBuilds:
+  sharp: true

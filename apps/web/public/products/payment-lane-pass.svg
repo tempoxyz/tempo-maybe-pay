@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" role="img" aria-labelledby="title desc">
+  <title id="title">Payment Lane Pass</title>
+  <desc id="desc">A stylized road lane with stablecoin markers.</desc>
+  <rect width="900" height="900" fill="#eef7f4"/>
+  <path d="M210 820 390 80h120l180 740H210Z" fill="#12333a"/>
+  <path d="M430 150h40v110h-40V150Zm0 180h40v150h-40V330Zm0 220h40v190h-40V550Z" fill="#f8d467"/>
+  <circle cx="252" cy="220" r="58" fill="#2ea7a6"/>
+  <circle cx="648" cy="220" r="58" fill="#2ea7a6"/>
+  <circle cx="252" cy="680" r="58" fill="#f4f1e6"/>
+  <circle cx="648" cy="680" r="58" fill="#f4f1e6"/>
+  <text x="450" y="425" fill="#f4f1e6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="68" text-anchor="middle" font-weight="700">TIP-20</text>
+  <text x="450" y="505" fill="#f8d467" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="44" text-anchor="middle">LANE</text>
+</svg>
+

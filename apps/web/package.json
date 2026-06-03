@@ -1,0 +1,28 @@
+{
+  "name": "@tempo-maybe-pay/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "check": "tsc --noEmit",
+    "dev": "next dev",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "latest",
+    "@tempo-maybe-pay/shared": "workspace:*",
+    "accounts": "0.12.2",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "viem": "latest",
+    "wagmi": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "^5.9.3"
+  }
+}

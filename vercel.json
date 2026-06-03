@@ -1,0 +1,8 @@
+{
+  "buildCommand": "pnpm --filter @tempo-maybe-pay/web build",
+  "devCommand": "pnpm --filter @tempo-maybe-pay/web dev",
+  "framework": "nextjs",
+  "installCommand": "pnpm install",
+  "outputDirectory": "apps/web/.next"
+}
+

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" role="img" aria-labelledby="title desc">
+  <title id="title">Moderato Mint</title>
+  <desc id="desc">A mint coin over warm Tempo testnet bands.</desc>
+  <rect width="900" height="900" fill="#f8f2e7"/>
+  <path d="M0 210h900v120H0z" fill="#c17b35"/>
+  <path d="M0 570h900v120H0z" fill="#285c67"/>
+  <circle cx="450" cy="450" r="245" fill="#12333a"/>
+  <circle cx="450" cy="450" r="198" fill="#f8d467"/>
+  <circle cx="450" cy="450" r="142" fill="#f8f2e7"/>
+  <path d="M450 278 510 398l132 20-96 94 23 132-119-62-119 62 23-132-96-94 132-20 60-120Z" fill="#c17b35"/>
+  <text x="450" y="782" fill="#12333a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="48" text-anchor="middle" font-weight="700">MODERATO</text>
+</svg>
+

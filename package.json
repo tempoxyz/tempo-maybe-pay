@@ -1,0 +1,15 @@
+{
+  "name": "tempo-maybe-pay",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.1",
+  "scripts": {
+    "build": "pnpm --recursive --stream build",
+    "check": "pnpm --recursive --stream check",
+    "dev": "pnpm --filter @tempo-maybe-pay/web dev",
+    "test": "pnpm --filter @tempo-maybe-pay/contracts test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
