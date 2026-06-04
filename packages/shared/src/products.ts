@@ -18,7 +18,7 @@ export const products = [
     sku: 'TMP-HD-01',
     category: 'Apparel',
     tagline: 'Heavyweight checkout layer.',
-    description: 'A black cotton fleece hoodie for chilly demo rooms and warmer payment flows.',
+    description: 'A black cotton fleece hoodie for cool mornings and warmer payment flows.',
     basePrice: 42_000_000n,
     maxSupply: 500,
     image: '/products/tempo-hoodie.svg',

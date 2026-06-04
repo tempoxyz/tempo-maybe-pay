@@ -1,21 +1,86 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+@font-face {
+  font-family: "HB Set";
+  src: url("https://tempo.xyz/fonts/HB_Set/HBSet-Light.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: "HB Set";
+  src: url("https://tempo.xyz/fonts/HB_Set/HBSet-Regular2.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 450;
+}
+
+@font-face {
+  font-family: Pilat;
+  src: url("https://tempo.xyz/fonts/Pilat/Pilat-Regular.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: Pilat;
+  src: url("https://tempo.xyz/fonts/Pilat/Pilat-Book.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 450;
+}
+
+@font-face {
+  font-family: Pilat;
+  src: url("https://tempo.xyz/fonts/Pilat/Pilat-Demi.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 600;
+}
+
 :root {
   color-scheme: light;
-  --ink: #0b0b0b;
-  --muted: #666666;
-  --soft: #8a8a8a;
-  --line: #d8d8d8;
-  --paper: #f3f3f3;
-  --surface: #ffffff;
-  --surface-2: #f8f8f8;
-  --paid: #111111;
-  --free: #dfe9e5;
-  --green: #176f5f;
-  --gold: #a47726;
-  --danger: #9f2f22;
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --color-gray: #f3f3f3;
+  --color-gray-100: #f2f2f2;
+  --color-gray-200: #d9d9d9;
+  --color-gray-300: #cccccc;
+  --color-gray-400: #b2b2b2;
+  --color-gray-500: #999999;
+  --color-gray-600: #808080;
+  --color-gray-700: #4d4d4d;
+  --color-gray-800: #333333;
+  --color-gray-900: #262626;
+  --color-gray-1000: #1a1a1a;
+  --color-gray-1100: #0d0d0d;
+  --color-success: #166534;
+  --color-warning: #a16207;
+  --color-danger: #9f2f22;
+  --font-primary: Pilat, Arial, Helvetica, sans-serif;
+  --font-secondary: "HB Set", "Times New Roman", Georgia, serif;
+  --font-code: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-48: 48px;
+  --spacing-64: 64px;
+  --spacing-88: 88px;
+  --max-inline-size: 1720px;
+  --grid-gap: 12px;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
@@ -25,10 +90,9 @@ body {
 }
 
 body {
-  background: var(--paper);
-  color: var(--ink);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--color-gray);
+  color: var(--color-black);
+  font-family: var(--font-primary);
   letter-spacing: 0;
 }
 
@@ -49,45 +113,146 @@ a {
 
 .shell {
   margin: 0 auto;
-  max-width: 1440px;
-  padding: 28px 32px 48px;
+  max-width: var(--max-inline-size);
+  padding: var(--spacing-24) var(--spacing-64) var(--spacing-64);
 }
 
-.topbar {
-  align-items: flex-start;
-  display: flex;
-  gap: 24px;
-  justify-content: space-between;
-}
-
-.brandBlock {
-  align-items: flex-start;
-  display: flex;
-  gap: 18px;
-  max-width: 760px;
-}
-
-.brandMark {
+.siteHeader {
   align-items: center;
-  background: var(--ink);
-  color: var(--surface);
+  display: grid;
+  gap: var(--spacing-24);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 64px;
+}
+
+.logoLink {
+  align-items: center;
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 800;
   height: 40px;
+  text-decoration: none;
+}
+
+.logoLink img {
+  display: block;
+  height: 34px;
+  width: auto;
+}
+
+.siteNav {
+  align-items: center;
+  display: flex;
+  gap: var(--spacing-8);
   justify-content: center;
+}
+
+.siteNav a,
+.iconButton,
+.selectLabel select,
+.primaryButton,
+.productCard,
+.linkStack a,
+.txLink,
+.contractLink {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.siteNav a {
+  color: var(--color-gray-700);
+  font-size: 14px;
   line-height: 1;
-  padding: 0 12px;
-  text-transform: lowercase;
+  padding: 12px 18px;
+  text-decoration: none;
+}
+
+.siteNav a:hover {
+  background: var(--color-white);
+  color: var(--color-black);
+}
+
+.controls,
+.connectors {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+  justify-content: flex-end;
+}
+
+.selectLabel {
+  align-items: center;
+  display: flex;
+  gap: var(--spacing-8);
+}
+
+.selectLabel span,
+.eyebrow,
+.productCategory,
+.statusBand span,
+.mathGrid span,
+.receiptRows span,
+.balanceLine span {
+  color: var(--color-gray-600);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.selectLabel select,
+.iconButton,
+.primaryButton {
+  border: 1px solid var(--color-black);
+}
+
+.selectLabel select {
+  background: var(--color-white);
+  color: var(--color-black);
+  min-height: 40px;
+  padding: 0 36px 0 14px;
+}
+
+.iconButton,
+.primaryButton {
+  align-items: center;
+  background: var(--color-white);
+  color: var(--color-black);
+  cursor: pointer;
+  display: inline-flex;
+  gap: var(--spacing-8);
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.iconButton:hover,
+.selectLabel select:hover {
+  background: var(--color-gray-100);
+}
+
+.iconButton:disabled,
+.primaryButton:disabled,
+.productCard:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.hero {
+  align-items: end;
+  border-bottom: 1px solid var(--color-gray-200);
+  display: grid;
+  gap: var(--spacing-24);
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  padding: 96px 0 var(--spacing-48);
 }
 
 .eyebrow {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.2;
-  margin: 0 0 8px;
-  text-transform: uppercase;
+  display: block;
+  margin: 0 0 var(--spacing-16);
 }
 
 h1,
@@ -96,83 +261,39 @@ h2 {
 }
 
 h1 {
-  font-size: 52px;
-  line-height: 1;
-  max-width: 780px;
+  font-family: var(--font-secondary);
+  font-size: clamp(64px, 8vw, 124px);
+  font-weight: 300;
+  line-height: 0.95;
+  max-width: 900px;
 }
 
 h2 {
-  font-size: 26px;
-  line-height: 1.1;
+  font-family: var(--font-secondary);
+  font-size: clamp(34px, 4vw, 54px);
+  font-weight: 300;
+  line-height: 1;
 }
 
-.controls,
-.connectors {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.selectLabel {
-  align-items: center;
-  display: flex;
-  gap: 8px;
-}
-
-.selectLabel span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-select,
-.iconButton,
-.primaryButton {
-  border: 1px solid var(--ink);
-}
-
-select {
-  background: var(--surface);
-  color: var(--ink);
-  min-height: 40px;
-  padding: 0 34px 0 12px;
-}
-
-.iconButton,
-.primaryButton {
-  align-items: center;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-  display: inline-flex;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 12px;
-}
-
-.iconButton:disabled,
-.primaryButton:disabled,
-.productCard:disabled,
-select:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+.hero > p {
+  color: var(--color-gray-800);
+  font-size: 24px;
+  line-height: 1.35;
+  margin: 0;
+  max-width: 560px;
 }
 
 .statusBand {
-  border-bottom: 1px solid var(--line);
-  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-gray-200);
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  margin: 34px 0 28px;
+  margin-bottom: var(--spacing-48);
 }
 
 .statusBand div {
-  background: rgba(255, 255, 255, 0.54);
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--color-gray-200);
   min-width: 0;
-  padding: 16px;
+  padding: var(--spacing-24) var(--spacing-16);
 }
 
 .statusBand div:last-child {
@@ -183,13 +304,8 @@ select:disabled {
 .mathGrid span,
 .receiptRows span,
 .balanceLine span {
-  color: var(--muted);
   display: block;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 6px;
-  text-transform: uppercase;
+  margin-bottom: var(--spacing-8);
 }
 
 .statusBand strong,
@@ -197,7 +313,8 @@ select:disabled {
 .receiptRows strong,
 .balanceLine strong {
   display: block;
-  font-size: 17px;
+  font-size: 18px;
+  font-weight: 450;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -205,76 +322,74 @@ select:disabled {
 .layout {
   align-items: start;
   display: grid;
-  gap: 28px;
-  grid-template-columns: minmax(0, 1fr) 440px;
+  gap: var(--spacing-40);
+  grid-template-columns: minmax(0, 1fr) 460px;
+}
+
+.catalog {
+  min-width: 0;
 }
 
 .sectionHeader {
   align-items: end;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-gray-200);
   display: flex;
-  gap: 16px;
+  gap: var(--spacing-16);
   justify-content: space-between;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
+  margin-bottom: var(--spacing-16);
+  padding-bottom: var(--spacing-24);
 }
 
 .sectionHeader > span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--color-gray-600);
+  font-size: 14px;
 }
 
 .productGrid {
   display: grid;
-  gap: 12px;
+  gap: var(--grid-gap);
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .productCard {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--ink);
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-200);
+  color: var(--color-black);
   cursor: pointer;
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-8);
   min-height: 100%;
-  padding: 12px;
+  padding: var(--spacing-16);
   text-align: left;
 }
 
 .productCard:hover {
-  border-color: var(--soft);
+  border-color: var(--color-gray-500);
+  transform: translateY(-2px);
 }
 
 .productCard.selected {
-  border-color: var(--ink);
-  box-shadow: inset 0 -4px 0 0 var(--accent);
+  border-color: var(--color-black);
+  box-shadow: inset 0 -4px 0 0 var(--color-black);
 }
 
 .productCard img {
   aspect-ratio: 1;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--color-gray-100);
+  border: 1px solid var(--color-gray-200);
   display: block;
   object-fit: cover;
   width: 100%;
 }
 
-.productCategory {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .productCard strong {
-  font-size: 20px;
-  line-height: 1.1;
+  font-size: 21px;
+  font-weight: 450;
+  line-height: 1.12;
 }
 
 .productCard em {
-  color: var(--muted);
+  color: var(--color-gray-700);
   font-size: 14px;
   font-style: normal;
   line-height: 1.35;
@@ -282,63 +397,65 @@ select:disabled {
 }
 
 .priceLine {
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 800;
+  color: var(--color-black);
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .checkout {
-  background: var(--surface);
-  border: 1px solid var(--ink);
+  background: var(--color-white);
+  border: 1px solid var(--color-black);
   display: grid;
-  gap: 18px;
-  padding: 18px;
+  gap: var(--spacing-24);
+  padding: var(--spacing-24);
   position: sticky;
-  top: 20px;
+  top: var(--spacing-24);
 }
 
 .checkoutHeader {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-gray-200);
+  padding-bottom: var(--spacing-24);
 }
 
 .checkoutHeader p {
-  color: var(--muted);
+  color: var(--color-gray-700);
   line-height: 1.5;
-  margin: 10px 0 0;
+  margin: var(--spacing-12) 0 0;
 }
 
 .skuLine {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-16);
 }
 
 .skuLine span {
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  padding: 5px 8px;
+  border: 1px solid var(--color-gray-200);
+  color: var(--color-gray-700);
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px var(--spacing-8);
   text-transform: uppercase;
 }
 
 .oddsPanel {
   display: grid;
-  gap: 14px;
+  gap: var(--spacing-16);
 }
 
 .sliderLabel {
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-8);
   grid-template-columns: 1fr auto;
 }
 
 .sliderLabel span,
 .sliderLabel strong {
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .sliderLabel input {
@@ -346,7 +463,7 @@ select:disabled {
 }
 
 input[type="range"] {
-  accent-color: var(--ink);
+  accent-color: var(--color-black);
   width: 100%;
 }
 
@@ -354,11 +471,11 @@ input[type="range"] {
   background:
     linear-gradient(
       90deg,
-      var(--paid) 0 var(--pay-pct),
-      var(--free) var(--pay-pct) 100%
+      var(--color-black) 0 var(--pay-pct),
+      var(--color-gray-200) var(--pay-pct) 100%
     );
-  border: 1px solid var(--ink);
-  color: var(--surface);
+  border: 1px solid var(--color-black);
+  color: var(--color-white);
   display: grid;
   grid-template-columns: var(--pay-pct) minmax(0, 1fr);
   min-height: 48px;
@@ -370,39 +487,40 @@ input[type="range"] {
 .freeSegment {
   align-items: center;
   display: flex;
-  font-size: 12px;
-  font-weight: 900;
+  font-size: 11px;
+  font-weight: 600;
   justify-content: center;
   line-height: 1;
   min-width: 0;
   overflow: hidden;
-  padding: 0 8px;
+  padding: 0 var(--spacing-8);
   text-transform: uppercase;
 }
 
 .freeSegment {
-  color: var(--ink);
+  color: var(--color-black);
 }
 
 .thresholdMarker {
-  background: var(--gold);
+  background: var(--color-gray-700);
   bottom: -8px;
   left: var(--pay-pct);
   position: absolute;
   top: -8px;
   transform: translateX(-50%);
-  width: 3px;
+  width: 2px;
 }
 
 .thresholdMarker::after {
-  background: var(--gold);
-  bottom: -24px;
-  color: var(--ink);
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-700);
+  bottom: -28px;
+  color: var(--color-black);
   content: "threshold";
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 600;
   left: 50%;
-  padding: 3px 5px;
+  padding: 4px 6px;
   position: absolute;
   text-transform: uppercase;
   transform: translateX(-50%);
@@ -410,11 +528,12 @@ input[type="range"] {
 }
 
 .rollMarker {
-  background: var(--surface);
-  border: 2px solid var(--ink);
-  color: var(--ink);
+  background: var(--color-white);
+  border: 2px solid var(--color-black);
+  color: var(--color-black);
+  font-family: var(--font-code);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   left: var(--roll-pct);
   line-height: 1;
   padding: 5px 6px;
@@ -425,7 +544,7 @@ input[type="range"] {
 }
 
 .rollMarker::after {
-  background: var(--ink);
+  background: var(--color-black);
   content: "";
   height: 19px;
   left: 50%;
@@ -436,24 +555,24 @@ input[type="range"] {
 }
 
 .rollMarker.free {
-  border-color: var(--green);
+  border-color: var(--color-success);
 }
 
 .rollMarker.paid {
-  border-color: var(--gold);
+  border-color: var(--color-warning);
 }
 
 .mathGrid {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-gray-200);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .mathGrid div {
-  border-bottom: 1px solid var(--line);
-  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-gray-200);
+  border-right: 1px solid var(--color-gray-200);
   min-width: 0;
-  padding: 12px;
+  padding: var(--spacing-12);
 }
 
 .mathGrid div:nth-child(2n) {
@@ -465,90 +584,95 @@ input[type="range"] {
 }
 
 .explainPanel {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color-gray-200);
   display: grid;
-  gap: 12px;
-  padding-top: 16px;
+  gap: var(--spacing-12);
+  padding-top: var(--spacing-24);
 }
 
 .explainPanel div {
   align-items: flex-start;
   display: grid;
-  gap: 10px;
+  gap: var(--spacing-12);
   grid-template-columns: 24px minmax(0, 1fr);
 }
 
 .stepIndex {
   align-items: center;
-  background: var(--ink);
-  color: var(--surface);
+  background: var(--color-black);
+  color: var(--color-white);
   display: inline-flex;
+  font-family: var(--font-code);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   height: 24px;
   justify-content: center;
   width: 24px;
 }
 
 .explainPanel p {
-  color: var(--muted);
+  color: var(--color-gray-700);
   font-size: 13px;
   line-height: 1.45;
   margin: 0;
 }
 
 .explainPanel code {
-  color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  color: var(--color-black);
+  font-family: var(--font-code);
   font-size: 12px;
 }
 
 .balanceLine {
-  border-bottom: 1px solid var(--line);
-  border-top: 1px solid var(--line);
-  padding: 13px 0;
+  border-bottom: 1px solid var(--color-gray-200);
+  border-top: 1px solid var(--color-gray-200);
+  padding: var(--spacing-16) 0;
 }
 
 .notice,
 .error {
-  border: 1px solid var(--line);
-  padding: 12px;
+  border: 1px solid var(--color-gray-200);
+  padding: var(--spacing-12);
 }
 
 .notice {
-  background: #eef6f3;
-  color: #174c43;
+  background: var(--color-gray-100);
+  color: var(--color-gray-800);
 }
 
 .linkNotice {
   align-items: center;
   display: flex;
-  gap: 6px;
+  gap: var(--spacing-8);
   justify-content: space-between;
   text-decoration: none;
 }
 
 .error {
   background: #fff0ec;
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .primaryButton {
-  background: var(--ink);
-  color: white;
+  background: var(--color-black);
+  color: var(--color-white);
   justify-content: center;
-  min-height: 50px;
+  min-height: 52px;
   width: 100%;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--color-gray-900);
 }
 
 .txLink,
 .contractLink,
 .linkStack a {
   align-items: center;
-  color: var(--ink);
+  color: var(--color-black);
   display: inline-flex;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   gap: 5px;
   text-decoration: none;
 }
@@ -556,19 +680,19 @@ input[type="range"] {
 .txLink:hover,
 .contractLink:hover,
 .linkStack a:hover {
-  text-decoration: underline;
+  opacity: 0.65;
 }
 
 .result {
   align-items: flex-start;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--color-black);
   display: flex;
-  gap: 10px;
-  padding: 12px;
+  gap: var(--spacing-12);
+  padding: var(--spacing-12);
 }
 
 .result.paid {
-  background: #f9f3e7;
+  background: #f7f4ed;
 }
 
 .result.free {
@@ -580,7 +704,7 @@ input[type="range"] {
 }
 
 .result span {
-  color: var(--muted);
+  color: var(--color-gray-700);
   display: block;
   font-size: 13px;
   line-height: 1.45;
@@ -588,17 +712,17 @@ input[type="range"] {
 }
 
 .receiptRows {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-gray-200);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 12px;
+  margin-top: var(--spacing-12);
 }
 
 .receiptRows div {
-  border-bottom: 1px solid var(--line);
-  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-gray-200);
+  border-right: 1px solid var(--color-gray-200);
   min-width: 0;
-  padding: 10px;
+  padding: var(--spacing-12);
 }
 
 .receiptRows div:nth-child(2n) {
@@ -610,14 +734,15 @@ input[type="range"] {
 }
 
 .receiptRows strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-code);
   font-size: 13px;
+  font-weight: 500;
 }
 
 .linkStack {
   display: grid;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-12);
 }
 
 .spin {
@@ -630,9 +755,13 @@ input[type="range"] {
   }
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1180px) {
+  .shell {
+    padding-inline: var(--spacing-32);
+  }
+
   .layout {
-    grid-template-columns: minmax(0, 1fr) 410px;
+    grid-template-columns: minmax(0, 1fr) 420px;
   }
 
   .productGrid {
@@ -640,20 +769,31 @@ input[type="range"] {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 940px) {
   .shell {
-    padding: 22px 18px 40px;
+    padding: var(--spacing-16) var(--spacing-16) var(--spacing-40);
   }
 
-  .topbar,
-  .brandBlock,
-  .layout {
-    display: grid;
+  .siteHeader {
     grid-template-columns: 1fr;
+  }
+
+  .siteNav {
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 
   .controls {
     justify-content: flex-start;
+  }
+
+  .hero,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding: var(--spacing-64) 0 var(--spacing-40);
   }
 
   .statusBand {
@@ -669,24 +809,45 @@ input[type="range"] {
   }
 }
 
-@media (max-width: 580px) {
-  .shell {
-    padding: 18px 12px 32px;
+@media (max-width: 600px) {
+  .logoLink img {
+    height: 28px;
   }
 
   h1 {
-    font-size: 38px;
+    font-size: 58px;
   }
 
   h2 {
-    font-size: 24px;
+    font-size: 34px;
   }
 
-  .productGrid,
+  .hero > p {
+    font-size: 19px;
+  }
+
   .statusBand,
   .mathGrid,
   .receiptRows {
     grid-template-columns: 1fr;
+  }
+
+  .productGrid {
+    display: flex;
+    gap: var(--spacing-12);
+    margin-inline: calc(var(--spacing-16) * -1);
+    max-width: calc(100vw - var(--spacing-32));
+    min-width: 0;
+    overflow-x: auto;
+    padding: 0 var(--spacing-16) var(--spacing-12);
+    scroll-padding-inline: var(--spacing-16);
+    scroll-snap-type: x mandatory;
+  }
+
+  .productCard {
+    flex: 0 0 min(76vw, 280px);
+    min-height: auto;
+    scroll-snap-align: start;
   }
 
   .statusBand div,
@@ -697,7 +858,7 @@ input[type="range"] {
 
   .mathGrid div:nth-last-child(-n + 2),
   .receiptRows div:nth-last-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--color-gray-200);
   }
 
   .mathGrid div:last-child,
@@ -714,7 +875,7 @@ input[type="range"] {
   }
 
   .iconButton,
-  select {
+  .selectLabel select {
     justify-content: center;
     width: 100%;
   }

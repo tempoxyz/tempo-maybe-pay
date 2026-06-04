@@ -1,15 +1,15 @@
 # Tempo Maybe Pay
 
-Tempo Maybe Pay is a hackathon demo for buying merchant-store product NFTs with a probabilistic TIP-20 payment. Users escrow the maximum payment, onchain commit-reveal randomness resolves whether the order is paid or free, and the NFT is minted in either outcome.
+Tempo Maybe Pay is a merchant storefront for buying product tokens with a probabilistic TIP-20 payment. Users escrow the maximum payment, onchain commit-reveal randomness resolves whether the order is paid or returned, and the item token is minted in either outcome.
 
 ## Flow
 
 1. A user connects a Tempo passkey wallet.
 2. The app opens a committed randomness epoch.
-3. The user chooses an NFT and pay probability.
+3. The user chooses an item and pay probability.
 4. The user approves pathUSD escrow and places an order.
 5. The frontend waits for the order receipt and calls the Vercel processor.
-6. The processor reveals the seed, resolves the order, moves pathUSD with memos, and mints the NFT.
+6. The processor reveals the seed, resolves the order, moves pathUSD with memos, and mints the item token.
 
 ## Local Setup
 
@@ -24,7 +24,7 @@ Copy `apps/web/.env.example` to `apps/web/.env.local` after contracts are deploy
 ## Tempo testnet deployment
 
 - Store: `0x53e4b02Be21d629AFf3Cd6C8500913Bd48CAD8A1`
-- NFT: `0x150ee51799ED8Eba69fcfB1Bb35Af7295ad9B86a`
+- Item token: `0x150ee51799ED8Eba69fcfB1Bb35Af7295ad9B86a`
 - Payment token: `0x20c0000000000000000000000000000000000000`
 - Operator: `0xCdf374527991264A77073D83A6781eD6A121722B`
 

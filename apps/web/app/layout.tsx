@@ -3,8 +3,8 @@ import { Providers } from './components/providers'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Tempo Maybe Pay',
-  description: 'Buy now, pay maybe on Tempo.',
+  title: 'Tempo Store',
+  description: 'Buy now, pay maybe with pathUSD on Tempo.',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -16,4 +16,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   )
 }
-
