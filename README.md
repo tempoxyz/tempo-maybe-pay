@@ -1,6 +1,6 @@
 # Tempo Maybe Pay
 
-Tempo Maybe Pay is a hackathon demo for buying fake Tempo product NFTs with a probabilistic TIP-20 payment. Users escrow the maximum payment, onchain commit-reveal randomness resolves whether the order is paid or free, and the NFT is minted in either outcome.
+Tempo Maybe Pay is a hackathon demo for buying merchant-store product NFTs with a probabilistic TIP-20 payment. Users escrow the maximum payment, onchain commit-reveal randomness resolves whether the order is paid or free, and the NFT is minted in either outcome.
 
 ## Flow
 
@@ -23,14 +23,16 @@ Copy `apps/web/.env.example` to `apps/web/.env.local` after contracts are deploy
 
 ## Tempo testnet deployment
 
-- Store: `0x93Bde6cfc058230783211fdF2A80B872B5dEB4A2`
-- NFT: `0xCEF460cb161fe30c2FE0526164374BF992A627C4`
+- Store: `0x53e4b02Be21d629AFf3Cd6C8500913Bd48CAD8A1`
+- NFT: `0x150ee51799ED8Eba69fcfB1Bb35Af7295ad9B86a`
 - Payment token: `0x20c0000000000000000000000000000000000000`
 - Operator: `0xCdf374527991264A77073D83A6781eD6A121722B`
 
 Deployment artifact: `packages/contracts/deployments/42431.json`.
 
 Mainnet is configured in code but not deployed yet.
+
+The testnet catalog has ten merchant items: Tempo Hoodie, Ceramic Mug, Desk Mat, Canvas Tote, Notebook Pack, Stainless Bottle, Mechanical Keyboard, Desk Lamp, Gift Card, and Sticker Sheet.
 
 ## Live app
 
@@ -43,6 +45,7 @@ pnpm check
 pnpm --filter @tempo-maybe-pay/web build
 ```
 
-The current testnet smoke test opened an epoch, placed an order, processed it through the API, and minted NFT `#1`.
+The refreshed production smoke placed and processed both outcomes against `https://tempo-maybe-pay.vercel.app`:
 
-Production smoke test opened the live app, placed a Moderato order, processed it through Vercel, and minted NFT `#2`.
+- Paid path: token `#5`, order tx `0x268a6611f5504e5bc761a2e0e9b73ebb2adf3b8e2f4394ddeb45a12555f54527`, process tx `0xae8873ad70a32b90b1829c4fe7bb45da71237445553501736cab562e6f58e5e1`
+- Free path: token `#6`, order tx `0xb68586f58106cbea9d77fc01e4c78be99a2d39d97a59fc71ccf00ce24c178c1b`, process tx `0x326eb4fa9595cd7eb56e95268f37c7e6fbaa2b539d96ec52aad600d34756bcc6`

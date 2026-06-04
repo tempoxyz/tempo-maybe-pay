@@ -2,6 +2,7 @@
 
 import {
   explorerAddressUrl,
+  explorerNftUrl,
   explorerTxUrl,
   formatPathUsd,
   getDeployment,
@@ -14,7 +15,7 @@ import {
 } from '@tempo-maybe-pay/shared'
 import { ArrowRight, CheckCircle2, ExternalLink, RefreshCw, ShieldCheck, Wallet } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { encodeFunctionData, keccak256, stringToHex, zeroAddress, type Hex } from 'viem'
 import {
   useAccount,
@@ -29,21 +30,43 @@ import {
 type Stage = 'idle' | 'epoch' | 'placing' | 'processing' | 'resolved'
 
 type ProcessResult = {
+  basePrice: string
+  buyer: Hex
+  commitment: Hex
+  epochId: string
+  maxEscrow: string
+  merchant?: Hex
+  metadataHash: Hex
+  nftOwner: Hex
   orderId: Hex
-  status: 'paid' | 'free'
-  roll: string
-  tokenId: string
+  paidAmount: string
+  payProbabilityBps: number
   processTransactionHash?: Hex
+  productId: string
+  refundedAmount: string
+  roll: string
+  seed: Hex
+  status: 'paid' | 'free'
+  threshold: string
+  tokenId: string
 }
 
-function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`
+function shortValue(value: string, visible = 6): string {
+  return `${value.slice(0, visible)}...${value.slice(-4)}`
 }
 
 function randomOrderId(): Hex {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
   return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+function formatPercent(bps: number): string {
+  return `${(bps / 100).toFixed(0)}%`
+}
+
+function formatRawPathUsd(raw: string | bigint): string {
+  return formatPathUsd(typeof raw === 'bigint' ? raw : BigInt(raw))
 }
 
 export function Shop() {
@@ -73,7 +96,9 @@ export function Shop() {
     () => quoteMaxEscrow(product.basePrice, payProbabilityBps),
     [payProbabilityBps, product.basePrice],
   )
-  const freeProbability = 10_000 - payProbabilityBps
+  const multiplier = Number((maxEscrow * 100n) / product.basePrice) / 100
+  const paidRollRange = `0-${payProbabilityBps - 1}`
+  const freeRollRange = payProbabilityBps === 10_000 ? 'none' : `${payProbabilityBps}-9999`
   const chainReady = Boolean(deployment.store && deployment.nft)
   const connectedToSelectedChain = chainId === selectedChainId
 
@@ -92,6 +117,12 @@ export function Shop() {
   const balance = typeof balanceQuery.data === 'bigint' ? balanceQuery.data : 0n
   const hasFunds = !address || balance >= maxEscrow
   const busy = stage === 'epoch' || stage === 'placing' || stage === 'processing' || sendTransactionSync.isPending
+  const roll = result ? Number(result.roll) : undefined
+  const rollPercent = roll === undefined ? undefined : `${roll / 100}%`
+  const oddsStyle = {
+    '--pay-pct': `${payProbabilityBps / 100}%`,
+    '--roll-pct': rollPercent ?? '0%',
+  } as CSSProperties
 
   async function changeNetwork(nextChainId: ChainId) {
     router.replace(`/?chainId=${nextChainId}`)
@@ -171,6 +202,7 @@ export function Shop() {
       const processed = (await processResponse.json()) as ProcessResult
       setResult(processed)
       setStage('resolved')
+      await balanceQuery.refetch()
     } catch (caught) {
       setStage('idle')
       setError(caught instanceof Error ? caught.message : 'Checkout failed.')
@@ -180,9 +212,12 @@ export function Shop() {
   return (
     <main className="shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Tempo · Maybe Pay</p>
-          <h1>Buy now, pay maybe</h1>
+        <div className="brandBlock">
+          <span className="brandMark">tempo</span>
+          <div>
+            <p className="eyebrow">Maybe Pay merchant demo</p>
+            <h1>Storefront settlement with probabilistic pathUSD.</h1>
+          </div>
         </div>
         <div className="controls">
           <label className="selectLabel">
@@ -199,7 +234,7 @@ export function Shop() {
           {isConnected && address ? (
             <button className="iconButton" type="button" onClick={() => disconnect()} disabled={busy}>
               <Wallet size={17} />
-              {shortAddress(address)}
+              {shortValue(address)}
             </button>
           ) : (
             <div className="connectors">
@@ -222,82 +257,153 @@ export function Shop() {
 
       <section className="statusBand">
         <div>
-          <span>Base price</span>
+          <span>Expected value</span>
           <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
         </div>
         <div>
-          <span>Chance free</span>
-          <strong>{(freeProbability / 100).toFixed(0)}%</strong>
+          <span>Pay threshold</span>
+          <strong>{payProbabilityBps} / 10000</strong>
         </div>
         <div>
           <span>Max escrow</span>
           <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
         </div>
         <div>
-          <span>Expected payment</span>
-          <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
+          <span>Mint recipient</span>
+          <strong>{address ? shortValue(address) : 'Connect wallet'}</strong>
         </div>
       </section>
 
       <section className="layout">
-        <div className="productGrid">
-          {products.map((item) => (
-            <button
-              className={`productCard ${item.id === product.id ? 'selected' : ''}`}
-              key={item.id}
-              onClick={() => setSelectedProductId(item.id)}
-              style={{ '--accent': item.accent } as React.CSSProperties}
-              type="button"
-            >
-              <img alt="" src={item.image} />
-              <span>{item.name}</span>
-              <em>{item.tagline}</em>
-              <strong>{formatPathUsd(item.basePrice)} pathUSD</strong>
-            </button>
-          ))}
+        <div className="catalog">
+          <div className="sectionHeader">
+            <div>
+              <p className="eyebrow">Merchant inventory</p>
+              <h2>Choose a store item</h2>
+            </div>
+            <span>{products.length} NFTs available</span>
+          </div>
+          <div className="productGrid">
+            {products.map((item) => (
+              <button
+                className={`productCard ${item.id === product.id ? 'selected' : ''}`}
+                disabled={busy}
+                key={item.id}
+                onClick={() => setSelectedProductId(item.id)}
+                style={{ '--accent': item.accent } as CSSProperties}
+                type="button"
+              >
+                <img alt={item.name} src={item.image} />
+                <span className="productCategory">{item.category}</span>
+                <strong>{item.name}</strong>
+                <em>{item.tagline}</em>
+                <span className="priceLine">{formatPathUsd(item.basePrice)} pathUSD</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <aside className="checkout">
-          <img className="largeArt" alt="" src={product.image} />
-          <div>
-            <p className="eyebrow">Selected NFT</p>
+          <div className="checkoutHeader">
+            <p className="eyebrow">Checkout</p>
             <h2>{product.name}</h2>
             <p>{product.description}</p>
+            <div className="skuLine">
+              <span>{product.sku}</span>
+              <span>{product.category}</span>
+            </div>
           </div>
 
-          <label className="sliderLabel">
-            <span>Chance you pay: {(payProbabilityBps / 100).toFixed(0)}%</span>
-            <input
-              min={100}
-              max={10000}
-              step={100}
-              type="range"
-              value={payProbabilityBps}
-              onChange={(event) => setPayProbabilityBps(Number(event.target.value))}
-              disabled={busy}
-            />
-          </label>
+          <div className="oddsPanel" style={oddsStyle}>
+            <label className="sliderLabel">
+              <span>Chance you pay</span>
+              <strong>{formatPercent(payProbabilityBps)}</strong>
+              <input
+                min={100}
+                max={10000}
+                step={100}
+                type="range"
+                value={payProbabilityBps}
+                onChange={(event) => setPayProbabilityBps(Number(event.target.value))}
+                disabled={busy}
+              />
+            </label>
 
-          <div className="mathRows">
+            <div className={`oddsTrack ${result ? 'resolved' : ''}`}>
+              <div className="paySegment">pay</div>
+              <div className="freeSegment">free</div>
+              <span className="thresholdMarker" />
+              {result ? (
+                <span className={`rollMarker ${result.status}`} title={`Roll ${result.roll}`}>
+                  {result.roll}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mathGrid">
+              <div>
+                <span>Pay if roll is</span>
+                <strong>{paidRollRange}</strong>
+              </div>
+              <div>
+                <span>Free if roll is</span>
+                <strong>{freeRollRange}</strong>
+              </div>
+              <div>
+                <span>Pay outcome</span>
+                <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
+              </div>
+              <div>
+                <span>Free outcome</span>
+                <strong>0 pathUSD</strong>
+              </div>
+              <div>
+                <span>Expected payment</span>
+                <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
+              </div>
+              <div>
+                <span>Multiplier</span>
+                <strong>{multiplier.toFixed(2)}x</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="explainPanel">
             <div>
-              <span>Pay outcome</span>
-              <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
+              <span className="stepIndex">1</span>
+              <p>Epoch commitment is already on-chain before your order uses it.</p>
             </div>
             <div>
-              <span>Free outcome</span>
-              <strong>0 pathUSD</strong>
+              <span className="stepIndex">2</span>
+              <p>Your transaction escrows max pathUSD and writes the order ID.</p>
             </div>
             <div>
-              <span>Your balance</span>
-              <strong>{address ? `${formatPathUsd(balance)} pathUSD` : '-'}</strong>
+              <span className="stepIndex">3</span>
+              <p>
+                Processor reveals the seed; the contract rolls <code>hash(seed, order) % 10000</code>.
+              </p>
             </div>
+            <div>
+              <span className="stepIndex">4</span>
+              <p>Roll below threshold sweeps escrow to treasury. Otherwise escrow returns to you.</p>
+            </div>
+          </div>
+
+          <div className="balanceLine">
+            <span>Your balance</span>
+            <strong>{address ? `${formatPathUsd(balance)} pathUSD` : '-'}</strong>
           </div>
 
           {!chainReady ? (
-            <div className="notice">Mainnet addresses are ready to configure after funding and deployment.</div>
+            <div className="notice">Mainnet contracts are ready to configure after funding and deployment.</div>
           ) : null}
           {address && selectedChainId === 42431 && !hasFunds ? (
-            <a className="notice linkNotice" href="https://docs.tempo.xyz/quickstart/faucet" target="_blank">
+            <a
+              className="notice linkNotice"
+              href="https://docs.tempo.xyz/quickstart/faucet"
+              rel="noreferrer"
+              target="_blank"
+            >
               Get testnet pathUSD <ExternalLink size={14} />
             </a>
           ) : null}
@@ -311,20 +417,14 @@ export function Shop() {
           >
             {busy ? <RefreshCw className="spin" size={18} /> : <ShieldCheck size={18} />}
             {stage === 'epoch'
-              ? 'Committing odds'
+              ? 'Opening committed epoch'
               : stage === 'placing'
                 ? 'Escrowing order'
                 : stage === 'processing'
-                  ? 'Resolving order'
+                  ? 'Revealing roll'
                   : 'Buy maybe'}
             <ArrowRight size={18} />
           </button>
-
-          {placeTransactionHash ? (
-            <a className="txLink" href={explorerTxUrl(selectedChainId, placeTransactionHash)} target="_blank">
-              Order transaction <ExternalLink size={14} />
-            </a>
-          ) : null}
 
           {result ? (
             <div className={`result ${result.status}`}>
@@ -332,19 +432,90 @@ export function Shop() {
               <div>
                 <strong>{result.status === 'paid' ? 'Paid in full' : 'Free order'}</strong>
                 <span>
-                  NFT #{result.tokenId} minted · roll {result.roll}/10000
+                  Roll {result.roll} {result.status === 'paid' ? 'fell below' : 'landed at or above'} threshold{' '}
+                  {result.threshold}. NFT #{result.tokenId} minted to payer.
                 </span>
-                {result.processTransactionHash ? (
-                  <a href={explorerTxUrl(selectedChainId, result.processTransactionHash)} target="_blank">
-                    Resolution transaction <ExternalLink size={13} />
+                <div className="receiptRows">
+                  <div>
+                    <span>Escrowed</span>
+                    <strong>{formatRawPathUsd(result.maxEscrow)} pathUSD</strong>
+                  </div>
+                  <div>
+                    <span>{result.status === 'paid' ? 'Swept to treasury' : 'Refunded'}</span>
+                    <strong>
+                      {formatRawPathUsd(result.status === 'paid' ? result.paidAmount : result.refundedAmount)} pathUSD
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Epoch</span>
+                    <strong>{result.epochId}</strong>
+                  </div>
+                  <div>
+                    <span>Commitment</span>
+                    <strong>{shortValue(result.commitment, 8)}</strong>
+                  </div>
+                  <div>
+                    <span>Revealed seed</span>
+                    <strong>{shortValue(result.seed, 8)}</strong>
+                  </div>
+                  <div>
+                    <span>NFT owner</span>
+                    <strong>{shortValue(result.nftOwner)}</strong>
+                  </div>
+                </div>
+                <div className="linkStack">
+                  {deployment.nft ? (
+                    <a
+                      href={explorerNftUrl(selectedChainId, deployment.nft, result.tokenId)}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      View NFT #{result.tokenId} on Tempo Explorer <ExternalLink size={13} />
+                    </a>
+                  ) : null}
+                  <a href={explorerAddressUrl(selectedChainId, result.nftOwner)} rel="noreferrer" target="_blank">
+                    Payer address <ExternalLink size={13} />
                   </a>
-                ) : null}
+                  {result.merchant ? (
+                    <a href={explorerAddressUrl(selectedChainId, result.merchant)} rel="noreferrer" target="_blank">
+                      Treasury address <ExternalLink size={13} />
+                    </a>
+                  ) : null}
+                  {placeTransactionHash ? (
+                    <a href={explorerTxUrl(selectedChainId, placeTransactionHash)} rel="noreferrer" target="_blank">
+                      Order transaction <ExternalLink size={13} />
+                    </a>
+                  ) : null}
+                  {result.processTransactionHash ? (
+                    <a
+                      href={explorerTxUrl(selectedChainId, result.processTransactionHash)}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Resolution transaction <ExternalLink size={13} />
+                    </a>
+                  ) : null}
+                </div>
               </div>
             </div>
+          ) : placeTransactionHash ? (
+            <a
+              className="txLink"
+              href={explorerTxUrl(selectedChainId, placeTransactionHash)}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Order transaction <ExternalLink size={14} />
+            </a>
           ) : null}
 
           {deployment.store ? (
-            <a className="contractLink" href={explorerAddressUrl(selectedChainId, deployment.store)} target="_blank">
+            <a
+              className="contractLink"
+              href={explorerAddressUrl(selectedChainId, deployment.store)}
+              rel="noreferrer"
+              target="_blank"
+            >
               Store contract <ExternalLink size={13} />
             </a>
           ) : null}

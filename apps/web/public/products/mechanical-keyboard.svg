@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-labelledby="title desc">
+  <title id="title">Mechanical Keyboard</title>
+  <desc id="desc">A compact mechanical keyboard merchant product.</desc>
+  <rect width="800" height="800" fill="#f3f3f3"/>
+  <rect x="84" y="84" width="632" height="632" fill="#fff" stroke="#d8d8d8" stroke-width="2"/>
+  <rect x="150" y="286" width="500" height="232" rx="28" fill="#2f4050" stroke="#121a22" stroke-width="10"/>
+  <g fill="#f2f2f2" stroke="#121a22" stroke-width="5">
+    <rect x="190" y="326" width="48" height="38" rx="7"/><rect x="252" y="326" width="48" height="38" rx="7"/><rect x="314" y="326" width="48" height="38" rx="7"/><rect x="376" y="326" width="48" height="38" rx="7"/><rect x="438" y="326" width="48" height="38" rx="7"/><rect x="500" y="326" width="48" height="38" rx="7"/><rect x="562" y="326" width="48" height="38" rx="7"/>
+    <rect x="190" y="382" width="48" height="38" rx="7"/><rect x="252" y="382" width="48" height="38" rx="7"/><rect x="314" y="382" width="48" height="38" rx="7"/><rect x="376" y="382" width="48" height="38" rx="7"/><rect x="438" y="382" width="48" height="38" rx="7"/><rect x="500" y="382" width="110" height="38" rx="7"/>
+    <rect x="190" y="438" width="110" height="38" rx="7"/><rect x="314" y="438" width="172" height="38" rx="7"/><rect x="500" y="438" width="110" height="38" rx="7"/>
+  </g>
+  <text x="400" y="592" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#2f4050">tempo keyboard</text>
+</svg>

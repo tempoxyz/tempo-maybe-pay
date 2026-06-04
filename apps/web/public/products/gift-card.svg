@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-labelledby="title desc">
+  <title id="title">Gift Card</title>
+  <desc id="desc">A purple digital gift card merchant product.</desc>
+  <rect width="800" height="800" fill="#f3f3f3"/>
+  <rect x="84" y="84" width="632" height="632" fill="#fff" stroke="#d8d8d8" stroke-width="2"/>
+  <rect x="164" y="270" width="472" height="278" rx="30" fill="#5d4b8a" stroke="#29213d" stroke-width="10"/>
+  <path d="M164 355h472" stroke="#1f1832" stroke-width="36"/>
+  <rect x="214" y="418" width="112" height="44" rx="8" fill="#fff" opacity=".9"/>
+  <rect x="214" y="484" width="212" height="16" rx="8" fill="#fff" opacity=".55"/>
+  <text x="488" y="462" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="700" fill="#fff">tempo</text>
+  <text x="488" y="502" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#cfc5f5">store credit</text>
+</svg>

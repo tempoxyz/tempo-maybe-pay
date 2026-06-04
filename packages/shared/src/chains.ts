@@ -18,13 +18,13 @@ export const chainDeployments = {
   42431: {
     chainId: 42431,
     name: 'Tempo Testnet',
-    rpcUrl: 'https://rpc.moderato.tempo.xyz',
+    rpcUrl: 'https://rpc.testnet.tempo.xyz',
     wsUrl: 'wss://rpc.moderato.tempo.xyz',
     explorerUrl: 'https://explore.testnet.tempo.xyz',
     sponsorUrl: 'https://sponsor.moderato.tempo.xyz',
     paymentToken: '0x20c0000000000000000000000000000000000000',
-    store: '0x93Bde6cfc058230783211fdF2A80B872B5dEB4A2',
-    nft: '0xCEF460cb161fe30c2FE0526164374BF992A627C4',
+    store: '0x53e4b02Be21d629AFf3Cd6C8500913Bd48CAD8A1',
+    nft: '0x150ee51799ED8Eba69fcfB1Bb35Af7295ad9B86a',
     merchant: '0xb83423C6063e24788a8990aA77638A41BA043541',
     operator: '0xCdf374527991264A77073D83A6781eD6A121722B',
   },
@@ -55,3 +55,6 @@ export function explorerAddressUrl(chainId: ChainId, address: string): string {
   return `${chainDeployments[chainId].explorerUrl}/address/${address}`
 }
 
+export function explorerNftUrl(chainId: ChainId, address: string, tokenId: string | number | bigint): string {
+  return `${chainDeployments[chainId].explorerUrl}/token/${address}/${tokenId.toString()}`
+}

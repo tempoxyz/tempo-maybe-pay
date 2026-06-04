@@ -1,5 +1,6 @@
 import {
   getDeployment,
+  maybePayNftAbi,
   maybePayStoreAbi,
   normalizeChainId,
   type ChainId,
@@ -54,7 +55,7 @@ export function getTempoClient(chainIdInput: string | number | null | undefined)
         default: { http: [rpcUrl], webSocket: [deployment.wsUrl] },
       },
     },
-    transport: http(rpcUrl),
+    transport: http(rpcUrl, { retryCount: 2, timeout: 15_000 }),
   })
     .extend(publicActions)
     .extend(walletActions)
@@ -155,6 +156,41 @@ export async function readOrder(chainIdInput: string | number | null | undefined
   }
 }
 
+export async function readEpoch(chainIdInput: string | number | null | undefined, epochId: bigint) {
+  const deployment = getServerDeployment(chainIdInput)
+  const client = getTempoClient(deployment.chainId)
+  const store = deployment.store
+  if (!store) throw new Error('Store is not deployed')
+
+  const epoch = (await client.readContract({
+    abi: maybePayStoreAbi,
+    address: store,
+    args: [epochId],
+    functionName: 'epochs',
+  })) as EpochTuple
+
+  return {
+    commitment: epoch[0],
+    openedAt: epoch[1],
+    revealDeadline: epoch[2],
+    orderId: epoch[3],
+    revealed: epoch[4],
+  }
+}
+
+export async function readNftOwner(chainIdInput: string | number | null | undefined, tokenId: bigint) {
+  const deployment = getServerDeployment(chainIdInput)
+  if (!deployment.nft) throw new Error(`${deployment.name} NFT is not deployed yet`)
+
+  const client = getTempoClient(deployment.chainId)
+  return client.readContract({
+    abi: maybePayNftAbi,
+    address: deployment.nft,
+    args: [tokenId],
+    functionName: 'ownerOf',
+  }) as Promise<Hex>
+}
+
 export function orderStatusName(status: number): 'none' | 'pending' | 'paid' | 'free' | 'refunded' {
   if (status === 1) return 'pending'
   if (status === 2) return 'paid'
@@ -162,4 +198,3 @@ export function orderStatusName(status: number): 'none' | 'pending' | 'paid' | '
   if (status === 4) return 'refunded'
   return 'none'
 }
-

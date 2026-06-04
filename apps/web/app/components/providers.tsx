@@ -23,7 +23,7 @@ const wagmiConfig = createConfig({
   ],
   multiInjectedProviderDiscovery: false,
   transports: {
-    [tempoModerato.id]: http('https://rpc.moderato.tempo.xyz'),
+    [tempoModerato.id]: http('https://rpc.testnet.tempo.xyz'),
     [tempo.id]: http('https://rpc.tempo.xyz'),
   },
 })
