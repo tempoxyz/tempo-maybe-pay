@@ -180,7 +180,7 @@ export async function readEpoch(chainIdInput: string | number | null | undefined
 
 export async function readNftOwner(chainIdInput: string | number | null | undefined, tokenId: bigint) {
   const deployment = getServerDeployment(chainIdInput)
-  if (!deployment.nft) throw new Error(`${deployment.name} NFT is not deployed yet`)
+  if (!deployment.nft) throw new Error(`${deployment.name} item token contract is not deployed yet`)
 
   const client = getTempoClient(deployment.chainId)
   return client.readContract({

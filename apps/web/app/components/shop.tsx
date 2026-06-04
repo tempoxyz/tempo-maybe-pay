@@ -137,7 +137,7 @@ export function Shop() {
       return
     }
     if (!deployment.store) {
-      setError('Mainnet contracts are configured but not deployed yet.')
+      setError('Checkout is not available on this network yet.')
       return
     }
     if (!hasFunds) {
@@ -211,14 +211,15 @@ export function Shop() {
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <div className="brandBlock">
-          <span className="brandMark">tempo</span>
-          <div>
-            <p className="eyebrow">Maybe Pay merchant demo</p>
-            <h1>Storefront settlement with probabilistic pathUSD.</h1>
-          </div>
-        </div>
+      <header className="siteHeader">
+        <a className="logoLink" href="https://tempo.xyz" rel="noreferrer" target="_blank" aria-label="Tempo">
+          <img src="/brand/tempo-wordmark-black.svg" alt="Tempo" />
+        </a>
+        <nav className="siteNav" aria-label="Store sections">
+          <a href="#shop">Shop</a>
+          <a href="#checkout">Checkout</a>
+          <a href="#settlement">Settlement</a>
+        </nav>
         <div className="controls">
           <label className="selectLabel">
             <span>Network</span>
@@ -255,9 +256,20 @@ export function Shop() {
         </div>
       </header>
 
+      <section className="hero">
+        <div>
+          <p className="eyebrow">Tempo Store</p>
+          <h1>Buy now. Pay maybe.</h1>
+        </div>
+        <p>
+          Choose an item, set your payment odds, and settle with pathUSD on Tempo. Every order mints
+          the item token to your wallet; the chain decides whether escrow is paid or returned.
+        </p>
+      </section>
+
       <section className="statusBand">
         <div>
-          <span>Expected value</span>
+          <span>Item price</span>
           <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
         </div>
         <div>
@@ -275,13 +287,13 @@ export function Shop() {
       </section>
 
       <section className="layout">
-        <div className="catalog">
+        <div className="catalog" id="shop">
           <div className="sectionHeader">
             <div>
-              <p className="eyebrow">Merchant inventory</p>
-              <h2>Choose a store item</h2>
+              <p className="eyebrow">Storefront</p>
+              <h2>Choose an item</h2>
             </div>
-            <span>{products.length} NFTs available</span>
+            <span>{products.length} items available</span>
           </div>
           <div className="productGrid">
             {products.map((item) => (
@@ -303,9 +315,9 @@ export function Shop() {
           </div>
         </div>
 
-        <aside className="checkout">
+        <aside className="checkout" id="checkout">
           <div className="checkoutHeader">
-            <p className="eyebrow">Checkout</p>
+            <p className="eyebrow">Maybe Pay checkout</p>
             <h2>{product.name}</h2>
             <p>{product.description}</p>
             <div className="skuLine">
@@ -350,15 +362,15 @@ export function Shop() {
                 <strong>{freeRollRange}</strong>
               </div>
               <div>
-                <span>Pay outcome</span>
+                <span>If paid</span>
                 <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
               </div>
               <div>
-                <span>Free outcome</span>
+                <span>If returned</span>
                 <strong>0 pathUSD</strong>
               </div>
               <div>
-                <span>Expected payment</span>
+                <span>Expected cost</span>
                 <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
               </div>
               <div>
@@ -368,24 +380,24 @@ export function Shop() {
             </div>
           </div>
 
-          <div className="explainPanel">
+          <div className="explainPanel" id="settlement">
             <div>
               <span className="stepIndex">1</span>
-              <p>Epoch commitment is already on-chain before your order uses it.</p>
+              <p>A randomness commitment is posted on-chain before your order is placed.</p>
             </div>
             <div>
               <span className="stepIndex">2</span>
-              <p>Your transaction escrows max pathUSD and writes the order ID.</p>
+              <p>Your transaction escrows the maximum pathUSD amount and writes the order ID.</p>
             </div>
             <div>
               <span className="stepIndex">3</span>
               <p>
-                Processor reveals the seed; the contract rolls <code>hash(seed, order) % 10000</code>.
+                The processor reveals the seed; the contract rolls <code>hash(seed, order) % 10000</code>.
               </p>
             </div>
             <div>
               <span className="stepIndex">4</span>
-              <p>Roll below threshold sweeps escrow to treasury. Otherwise escrow returns to you.</p>
+              <p>Roll below threshold pays treasury. Otherwise escrow returns to your wallet.</p>
             </div>
           </div>
 
@@ -395,7 +407,7 @@ export function Shop() {
           </div>
 
           {!chainReady ? (
-            <div className="notice">Mainnet contracts are ready to configure after funding and deployment.</div>
+            <div className="notice">Checkout is not available on this network yet.</div>
           ) : null}
           {address && selectedChainId === 42431 && !hasFunds ? (
             <a
@@ -404,7 +416,7 @@ export function Shop() {
               rel="noreferrer"
               target="_blank"
             >
-              Get testnet pathUSD <ExternalLink size={14} />
+              Get pathUSD <ExternalLink size={14} />
             </a>
           ) : null}
           {error ? <div className="error">{error}</div> : null}
@@ -422,7 +434,7 @@ export function Shop() {
                 ? 'Escrowing order'
                 : stage === 'processing'
                   ? 'Revealing roll'
-                  : 'Buy maybe'}
+                  : 'Place order'}
             <ArrowRight size={18} />
           </button>
 
@@ -433,7 +445,7 @@ export function Shop() {
                 <strong>{result.status === 'paid' ? 'Paid in full' : 'Free order'}</strong>
                 <span>
                   Roll {result.roll} {result.status === 'paid' ? 'fell below' : 'landed at or above'} threshold{' '}
-                  {result.threshold}. NFT #{result.tokenId} minted to payer.
+                  {result.threshold}. Item token #{result.tokenId} minted to payer.
                 </span>
                 <div className="receiptRows">
                   <div>
@@ -441,7 +453,7 @@ export function Shop() {
                     <strong>{formatRawPathUsd(result.maxEscrow)} pathUSD</strong>
                   </div>
                   <div>
-                    <span>{result.status === 'paid' ? 'Swept to treasury' : 'Refunded'}</span>
+                    <span>{result.status === 'paid' ? 'Paid to treasury' : 'Returned'}</span>
                     <strong>
                       {formatRawPathUsd(result.status === 'paid' ? result.paidAmount : result.refundedAmount)} pathUSD
                     </strong>
@@ -459,7 +471,7 @@ export function Shop() {
                     <strong>{shortValue(result.seed, 8)}</strong>
                   </div>
                   <div>
-                    <span>NFT owner</span>
+                    <span>Token owner</span>
                     <strong>{shortValue(result.nftOwner)}</strong>
                   </div>
                 </div>
@@ -470,11 +482,11 @@ export function Shop() {
                       rel="noreferrer"
                       target="_blank"
                     >
-                      View NFT #{result.tokenId} on Tempo Explorer <ExternalLink size={13} />
+                      View item token #{result.tokenId} on Tempo Explorer <ExternalLink size={13} />
                     </a>
                   ) : null}
                   <a href={explorerAddressUrl(selectedChainId, result.nftOwner)} rel="noreferrer" target="_blank">
-                    Payer address <ExternalLink size={13} />
+                    Wallet address <ExternalLink size={13} />
                   </a>
                   {result.merchant ? (
                     <a href={explorerAddressUrl(selectedChainId, result.merchant)} rel="noreferrer" target="_blank">
