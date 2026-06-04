@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 import { http, WagmiProvider, createConfig } from 'wagmi'
 import { tempo, tempoModerato } from 'wagmi/chains'
-import { tempoWallet, webAuthn } from 'wagmi/tempo'
+import { tempoWallet } from 'wagmi/tempo'
 
 const wagmiConfig = createConfig({
   batch: {
@@ -12,7 +12,6 @@ const wagmiConfig = createConfig({
   },
   chains: [tempoModerato, tempo],
   connectors: [
-    webAuthn(),
     tempoWallet({
       feePayer: {
         precedence: 'user-first',

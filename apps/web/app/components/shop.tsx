@@ -69,7 +69,11 @@ function formatRawPathUsd(raw: string | bigint): string {
   return formatPathUsd(typeof raw === 'bigint' ? raw : BigInt(raw))
 }
 
-export function Shop() {
+type ShopProps = {
+  checkoutProductId?: number
+}
+
+export function Shop({ checkoutProductId }: ShopProps = {}) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const selectedChainId = normalizeChainId(searchParams.get('chainId'))
@@ -84,14 +88,14 @@ export function Shop() {
     isPending: boolean
   }
 
-  const [selectedProductId, setSelectedProductId] = useState<number>(products[0].id)
   const [payProbabilityBps, setPayProbabilityBps] = useState(5000)
   const [stage, setStage] = useState<Stage>('idle')
   const [error, setError] = useState<string | undefined>()
   const [placeTransactionHash, setPlaceTransactionHash] = useState<Hex | undefined>()
   const [result, setResult] = useState<ProcessResult | undefined>()
 
-  const product = products.find((item) => item.id === selectedProductId) ?? products[0]
+  const isCheckoutPage = checkoutProductId !== undefined
+  const product = products.find((item) => item.id === (checkoutProductId ?? products[0].id)) ?? products[0]
   const maxEscrow = useMemo(
     () => quoteMaxEscrow(product.basePrice, payProbabilityBps),
     [payProbabilityBps, product.basePrice],
@@ -125,7 +129,7 @@ export function Shop() {
   } as CSSProperties
 
   async function changeNetwork(nextChainId: ChainId) {
-    router.replace(`/?chainId=${nextChainId}`)
+    router.replace(isCheckoutPage ? `/checkout/${product.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`)
     if (isConnected && chainId !== nextChainId) {
       await switchChainAsync({ chainId: nextChainId })
     }
@@ -212,14 +216,9 @@ export function Shop() {
   return (
     <main className="shell">
       <header className="siteHeader">
-        <a className="logoLink" href="https://tempo.xyz" rel="noreferrer" target="_blank" aria-label="Tempo">
-          <img src="/brand/tempo-wordmark-black.svg" alt="Tempo" />
-        </a>
-        <nav className="siteNav" aria-label="Store sections">
-          <a href="#shop">Shop</a>
-          <a href="#checkout">Checkout</a>
-          <a href="#settlement">Settlement</a>
-        </nav>
+        <div className="logoLink">
+          <img alt="Tempo Maybe Pay" src="/brand/tempo-maybe-pay-logo-black.png" />
+        </div>
         <div className="controls">
           <label className="selectLabel">
             <span>Network</span>
@@ -256,66 +255,66 @@ export function Shop() {
         </div>
       </header>
 
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Tempo Store</p>
-          <h1>Buy now. Pay maybe.</h1>
-        </div>
-        <p>
-          Choose an item, set your payment odds, and settle with pathUSD on Tempo. Every order mints
-          the item token to your wallet; the chain decides whether escrow is paid or returned.
-        </p>
-      </section>
+      {isCheckoutPage ? null : (
+        <>
+          <section className="hero">
+            <div>
+              <h1>Buy now. Pay maybe.</h1>
+            </div>
+            <p>
+              Choose an item, set your payment odds, and settle with pathUSD on Tempo. Every order mints
+              the item token to your wallet; the chain decides whether the item is free or not.
+            </p>
+          </section>
 
-      <section className="statusBand">
-        <div>
-          <span>Item price</span>
-          <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
-        </div>
-        <div>
-          <span>Pay threshold</span>
-          <strong>{payProbabilityBps} / 10000</strong>
-        </div>
-        <div>
-          <span>Max escrow</span>
-          <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
-        </div>
-        <div>
-          <span>Mint recipient</span>
-          <strong>{address ? shortValue(address) : 'Connect wallet'}</strong>
-        </div>
-      </section>
+          <div className="heroDivider" />
+        </>
+      )}
 
-      <section className="layout">
+      <section className={`layout ${isCheckoutPage ? 'checkoutLayout' : 'storefrontLayout'}`}>
         <div className="catalog" id="shop">
           <div className="sectionHeader">
             <div>
-              <p className="eyebrow">Storefront</p>
-              <h2>Choose an item</h2>
+              <h2>{isCheckoutPage ? product.name : 'Choose an item'}</h2>
             </div>
-            <span>{products.length} items available</span>
+            <span>{isCheckoutPage ? `${formatPathUsd(product.basePrice)} pathUSD` : `${products.length} items available`}</span>
           </div>
-          <div className="productGrid">
-            {products.map((item) => (
-              <button
-                className={`productCard ${item.id === product.id ? 'selected' : ''}`}
-                disabled={busy}
-                key={item.id}
-                onClick={() => setSelectedProductId(item.id)}
-                style={{ '--accent': item.accent } as CSSProperties}
-                type="button"
-              >
-                <img alt={item.name} src={item.image} />
-                <span className="productCategory">{item.category}</span>
-                <strong>{item.name}</strong>
-                <em>{item.tagline}</em>
-                <span className="priceLine">{formatPathUsd(item.basePrice)} pathUSD</span>
-              </button>
-            ))}
-          </div>
+          {isCheckoutPage ? (
+            <div className="checkoutProduct">
+              <img alt={product.name} src={product.image} />
+              <div>
+                <span className="productCategory">{product.category}</span>
+                <p>{product.description}</p>
+                <div className="skuLine">
+                  <span>{product.sku}</span>
+                  <span>{product.category}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="productGrid">
+              {products.map((item) => (
+                <button
+                  className="productCard"
+                  key={item.id}
+                  onClick={() => router.push(`/checkout/${item.id}?chainId=${selectedChainId}`)}
+                  style={{ '--accent': item.accent } as CSSProperties}
+                  type="button"
+                >
+                  <img alt={item.name} src={item.image} />
+                  <span className="productCategory">{item.category}</span>
+                  <strong>{item.name}</strong>
+                  <em>{item.tagline}</em>
+                  <span className="priceLine">{formatPathUsd(item.basePrice)} pathUSD</span>
+                  <span className="productAction">Checkout</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <aside className="checkout" id="checkout">
+        {isCheckoutPage ? (
+          <aside className="checkout" id="checkout">
           <div className="checkoutHeader">
             <p className="eyebrow">Maybe Pay checkout</p>
             <h2>{product.name}</h2>
@@ -531,7 +530,8 @@ export function Shop() {
               Store contract <ExternalLink size={13} />
             </a>
           ) : null}
-        </aside>
+          </aside>
+        ) : null}
       </section>
     </main>
   )
