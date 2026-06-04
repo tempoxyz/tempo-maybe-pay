@@ -16,9 +16,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     image: new URL(product.image, request.url).toString(),
     attributes: [
       { trait_type: 'Tempo chain', value: chainId },
+      { trait_type: 'SKU', value: product.sku },
+      { trait_type: 'Category', value: product.category },
       { trait_type: 'Base price', value: product.basePrice.toString() },
       { trait_type: 'Mechanism', value: 'Maybe Pay' },
     ],
   })
 }
-

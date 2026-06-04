@@ -4,6 +4,8 @@ import {
   getServerDeployment,
   getTempoClient,
   orderStatusName,
+  readEpoch,
+  readNftOwner,
   readOrder,
 } from '@/app/lib/tempo-server'
 import { maybePayStoreAbi } from '@tempo-maybe-pay/shared'
@@ -14,6 +16,50 @@ export const runtime = 'nodejs'
 
 type RouteContext = {
   params: Promise<{ orderId: string }> | { orderId: string }
+}
+
+type ReadOrderResult = Awaited<ReturnType<typeof readOrder>>
+
+async function buildResolvedResponse(
+  deployment: ReturnType<typeof getServerDeployment>,
+  orderId: Hex,
+  order: ReadOrderResult,
+  processTransactionHash?: Hex,
+) {
+  const status = orderStatusName(order.status)
+  if (status !== 'paid' && status !== 'free') {
+    return new NextResponse(`Order resolved to unexpected status ${status}`, { status: 500 })
+  }
+
+  const [epoch, nftOwner] = await Promise.all([
+    readEpoch(deployment.chainId, order.epochId),
+    readNftOwner(deployment.chainId, order.tokenId),
+  ])
+  const seed = deriveEpochSeed(deployment, order.epochId)
+  const paidAmount = status === 'paid' ? order.maxEscrow : 0n
+  const refundedAmount = status === 'free' ? order.maxEscrow : 0n
+
+  return NextResponse.json({
+    basePrice: order.basePrice.toString(),
+    buyer: order.buyer,
+    commitment: epoch.commitment,
+    epochId: order.epochId.toString(),
+    maxEscrow: order.maxEscrow.toString(),
+    merchant: deployment.merchant,
+    metadataHash: order.metadataHash,
+    nftOwner,
+    orderId,
+    paidAmount: paidAmount.toString(),
+    payProbabilityBps: order.payProbabilityBps,
+    processTransactionHash,
+    productId: order.productId.toString(),
+    refundedAmount: refundedAmount.toString(),
+    roll: order.roll.toString(),
+    seed,
+    status,
+    threshold: order.payProbabilityBps.toString(),
+    tokenId: order.tokenId.toString(),
+  })
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -31,12 +77,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const beforeStatus = orderStatusName(before.status)
     if (beforeStatus === 'none') return new NextResponse('Order not found', { status: 404 })
     if (beforeStatus === 'paid' || beforeStatus === 'free') {
-      return NextResponse.json({
-        orderId,
-        roll: before.roll.toString(),
-        status: beforeStatus,
-        tokenId: before.tokenId.toString(),
-      })
+      return buildResolvedResponse(deployment, orderId as Hex, before)
     }
     if (beforeStatus !== 'pending') {
       return new NextResponse(`Order is ${beforeStatus}`, { status: 409 })
@@ -64,22 +105,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const after = await readOrder(deployment.chainId, orderId as Hex)
-    const status = orderStatusName(after.status)
-    if (status !== 'paid' && status !== 'free') {
-      return new NextResponse(`Order resolved to unexpected status ${status}`, { status: 500 })
-    }
 
     await ensureEpoch(deployment.chainId).catch(() => undefined)
 
-    return NextResponse.json({
-      orderId,
-      processTransactionHash,
-      roll: after.roll.toString(),
-      status,
-      tokenId: after.tokenId.toString(),
-    })
+    return buildResolvedResponse(deployment, orderId as Hex, after, processTransactionHash)
   } catch (error) {
     return new NextResponse(error instanceof Error ? error.message : 'Failed to process order', { status: 500 })
   }
 }
-
