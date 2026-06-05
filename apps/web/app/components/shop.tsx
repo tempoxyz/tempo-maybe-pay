@@ -804,18 +804,25 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             <div className={`result ${result.status}`}>
               <CheckCircle2 size={20} />
               <div>
-                <strong>{result.status === 'paid' ? 'Paid in full' : 'Free order'}</strong>
+                <strong>{result.status === 'paid' ? 'Paid in full' : 'Free order - escrow returned'}</strong>
                 <span>
                   Roll {result.roll} {result.status === 'paid' ? 'fell below' : 'landed at or above'} threshold{' '}
-                  {result.threshold}. Item token #{result.tokenId} minted to payer.
+                  {result.threshold}. Item token #{result.tokenId} minted to payer
+                  {result.status === 'free' ? ', and the escrowed pathUSD was returned to their wallet.' : '.'}
                 </span>
+                {result.status === 'free' ? (
+                  <div className="escrowReturnCallout">
+                    <span>Escrow returned to wallet</span>
+                    <strong>{formatRawPathUsd(result.refundedAmount)} pathUSD</strong>
+                  </div>
+                ) : null}
                 <div className="receiptRows">
                   <div>
                     <span>Escrowed</span>
                     <strong>{formatRawPathUsd(result.maxEscrow)} pathUSD</strong>
                   </div>
                   <div>
-                    <span>{result.status === 'paid' ? 'Kept by house' : 'Returned'}</span>
+                    <span>{result.status === 'paid' ? 'Kept by house' : 'Returned to payer'}</span>
                     <strong>
                       {formatRawPathUsd(result.status === 'paid' ? result.paidAmount : result.refundedAmount)} pathUSD
                     </strong>
