@@ -163,7 +163,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const { address, isConnected } = useAccount()
   const { connectors, connectAsync, isPending: isConnecting } = useConnect()
   const { disconnect } = useDisconnect()
-  const { switchChainAsync, isPending: isSwitching } = useSwitchChain()
+  const { switchChainAsync } = useSwitchChain()
   const sendTransactionSync = useSendTransactionSync() as unknown as {
     mutateAsync: (args: Record<string, unknown>) => Promise<{ transactionHash?: Hex; hash?: Hex }>
     isPending: boolean
@@ -340,10 +340,14 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const expiredClaims = ownedClaims.filter((claim) => claim.expired)
   const collectibleClaims = ownedClaims.filter((claim) => !claim.active)
 
-  async function changeNetwork(nextChainId: ChainId) {
+  function changeNetwork(nextChainId: ChainId) {
+    setError(undefined)
     router.replace(isCheckoutPage ? `/checkout/${product.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`)
     if (isConnected && chainId !== nextChainId) {
-      await switchChainAsync({ chainId: nextChainId })
+      void switchChainAsync({ chainId: nextChainId }).catch((caught: unknown) => {
+        const message = caught instanceof Error ? caught.message : 'wallet did not switch networks'
+        setError(`The app switched networks, but your wallet did not: ${message}`)
+      })
     }
   }
 
@@ -533,8 +537,8 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             <span>Network</span>
             <select
               value={selectedChainId}
-              onChange={(event) => void changeNetwork(Number(event.target.value) as ChainId)}
-              disabled={isSwitching || busy}
+              onChange={(event) => changeNetwork(Number(event.target.value) as ChainId)}
+              disabled={busy}
             >
               <option value={42431}>Tempo testnet</option>
               <option value={4217}>Tempo mainnet</option>
