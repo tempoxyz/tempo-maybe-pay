@@ -33,11 +33,15 @@ export const chainDeployments = {
     wsUrl: 'wss://rpc.tempo.xyz',
     explorerUrl: 'https://explore.tempo.xyz',
     paymentToken: '0x20c0000000000000000000000000000000000000',
+    store: '0x8d4D5049c23a49CF1819867889ef1b0B049F118A',
+    nft: '0x8e02BA0dDE050d5101f18B0bCA7F82278D6483C9',
+    merchant: '0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4',
+    operator: '0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4',
   },
 } as const satisfies Record<ChainId, Deployment>
 
 export function normalizeChainId(value: string | number | null | undefined): ChainId {
-  const parsed = typeof value === 'number' ? value : value ? Number(value) : 42431
+  const parsed = typeof value === 'number' ? value : value ? Number(value) : 4217
   return parsed === 4217 ? 4217 : 42431
 }
 
