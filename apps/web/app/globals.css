@@ -231,6 +231,7 @@ a {
 .networkButton {
   justify-content: center;
   min-width: 78px;
+  text-decoration: none;
 }
 
 .networkButton + .networkButton {
@@ -244,16 +245,16 @@ a {
 
 .iconButton:hover,
 .selectLabel select:hover,
-.networkButton:hover:not(:disabled) {
+.networkButton:hover:not([data-disabled='true']) {
   background: var(--color-gray-100);
 }
 
-.networkButton[aria-pressed='true']:hover:not(:disabled) {
+.networkButton[aria-pressed='true']:hover:not([data-disabled='true']) {
   background: var(--color-black);
 }
 
 .iconButton:disabled,
-.networkButton:disabled,
+.networkButton[data-disabled='true'],
 .primaryButton:disabled,
 .secondaryButton:disabled,
 .productCard:disabled,

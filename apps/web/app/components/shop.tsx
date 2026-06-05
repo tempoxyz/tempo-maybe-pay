@@ -191,6 +191,8 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
 
   const isCheckoutPage = checkoutProductId !== undefined
   const product = products.find((item) => item.id === (checkoutProductId ?? products[0].id)) ?? products[0]
+  const routeForChain = (nextChainId: ChainId) =>
+    isCheckoutPage ? `/checkout/${product.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`
   const basePrice = getProductPrice(product, selectedChainId)
   const payProbabilityBps = 10_000 - freeProbabilityBps
   const maxEscrow = useMemo(
@@ -348,8 +350,13 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const collectibleClaims = ownedClaims.filter((claim) => !claim.active)
 
   function changeNetwork(nextChainId: ChainId) {
+    if (nextChainId === selectedChainId) return
     setError(undefined)
-    router.replace(isCheckoutPage ? `/checkout/${product.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`)
+    setResult(undefined)
+    setPlaceTransactionHash(undefined)
+    setRedemptionTransactionHash(undefined)
+    setStage('idle')
+
     if (isConnected && chainId !== nextChainId) {
       void switchChainAsync({ chainId: nextChainId }).catch((caught: unknown) => {
         const message = caught instanceof Error ? caught.message : 'wallet did not switch networks'
@@ -522,24 +529,40 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           <div className="networkSwitch">
             <span>Network</span>
             <div className="networkOptions" role="group" aria-label="Network">
-              <button
+              <Link
                 aria-pressed={selectedChainId === 42431}
                 className="networkButton"
-                disabled={busy}
-                onClick={() => changeNetwork(42431)}
-                type="button"
+                href={routeForChain(42431)}
+                onClick={(event) => {
+                  if (busy) {
+                    event.preventDefault()
+                    return
+                  }
+                  changeNetwork(42431)
+                }}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                data-disabled={busy || undefined}
               >
                 Testnet
-              </button>
-              <button
+              </Link>
+              <Link
                 aria-pressed={selectedChainId === 4217}
                 className="networkButton"
-                disabled={busy}
-                onClick={() => changeNetwork(4217)}
-                type="button"
+                href={routeForChain(4217)}
+                onClick={(event) => {
+                  if (busy) {
+                    event.preventDefault()
+                    return
+                  }
+                  changeNetwork(4217)
+                }}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                data-disabled={busy || undefined}
               >
                 Mainnet
-              </button>
+              </Link>
             </div>
           </div>
           {isConnected && address ? (
