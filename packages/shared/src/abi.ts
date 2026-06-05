@@ -8,6 +8,41 @@ export const maybePayStoreAbi = [
   },
   {
     type: 'function',
+    name: 'REDEEM_BPS',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint16' }],
+  },
+  {
+    type: 'function',
+    name: 'REDEEM_WINDOW',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint64' }],
+  },
+  {
+    type: 'function',
+    name: 'availableHouseReserve',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'outstandingRedemptionLiability',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'pendingEscrowTotal',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
     name: 'epochs',
     stateMutability: 'view',
     inputs: [{ name: 'epochId', type: 'uint256' }],
@@ -39,12 +74,37 @@ export const maybePayStoreAbi = [
   },
   {
     type: 'function',
+    name: 'redemptions',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [
+      { name: 'value', type: 'uint256' },
+      { name: 'deadline', type: 'uint64' },
+      { name: 'active', type: 'bool' },
+    ],
+  },
+  {
+    type: 'function',
     name: 'quoteMaxEscrow',
     stateMutability: 'view',
     inputs: [
       { name: 'productId', type: 'uint256' },
       { name: 'payProbabilityBps', type: 'uint16' },
     ],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'quoteRedeemValue',
+    stateMutability: 'view',
+    inputs: [{ name: 'productId', type: 'uint256' }],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'productInventoryCount',
+    stateMutability: 'view',
+    inputs: [{ name: 'productId', type: 'uint256' }],
     outputs: [{ type: 'uint256' }],
   },
   {
@@ -83,6 +143,20 @@ export const maybePayStoreAbi = [
     ],
   },
   {
+    type: 'function',
+    name: 'redeem',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'expireRedemption',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [],
+  },
+  {
     type: 'event',
     name: 'OrderResolved',
     inputs: [
@@ -93,6 +167,8 @@ export const maybePayStoreAbi = [
       { name: 'roll', type: 'uint256' },
       { name: 'paidAmount', type: 'uint256' },
       { name: 'refundedAmount', type: 'uint256' },
+      { name: 'redeemValue', type: 'uint256' },
+      { name: 'redeemDeadline', type: 'uint64' },
     ],
   },
 ] as const
@@ -130,10 +206,34 @@ export const tip20Abi = [
 export const maybePayNftAbi = [
   {
     type: 'function',
+    name: 'getApproved',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'isApprovedForAll',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'operator', type: 'address' },
+    ],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    type: 'function',
     name: 'ownerOf',
     stateMutability: 'view',
     inputs: [{ name: 'tokenId', type: 'uint256' }],
     outputs: [{ type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'tokenProduct',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ type: 'uint256' }],
   },
   {
     type: 'function',
@@ -142,5 +242,31 @@ export const maybePayNftAbi = [
     inputs: [{ name: 'tokenId', type: 'uint256' }],
     outputs: [{ type: 'string' }],
   },
+  {
+    type: 'function',
+    name: 'tokensOfOwner',
+    stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ type: 'uint256[]' }],
+  },
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'approved', type: 'address' },
+      { name: 'tokenId', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'setApprovalForAll',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'operator', type: 'address' },
+      { name: 'approved', type: 'bool' },
+    ],
+    outputs: [],
+  },
 ] as const
-

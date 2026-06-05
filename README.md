@@ -1,6 +1,6 @@
 # Tempo Maybe Pay
 
-Tempo Maybe Pay is a merchant storefront for buying product tokens with a probabilistic TIP-20 payment. Users escrow the maximum payment, onchain commit-reveal randomness resolves whether the order is paid or returned, and the item token is minted in either outcome.
+Tempo Maybe Pay is a "try to bankrupt the house" storefront for buying product NFTs with probabilistic TIP-20 payments. Users escrow the maximum payment, onchain commit-reveal randomness resolves whether the order is paid or free, and the item NFT is delivered either way. Each NFT can be redeemed back to the house for 99% of its price for 1 hour.
 
 ## Flow
 
@@ -9,7 +9,9 @@ Tempo Maybe Pay is a merchant storefront for buying product tokens with a probab
 3. The user chooses an item and pay probability.
 4. The user approves pathUSD escrow and places an order.
 5. The frontend waits for the order receipt and calls the Vercel processor.
-6. The processor reveals the seed, resolves the order, moves pathUSD with memos, and mints the item token.
+6. The processor reveals the seed, resolves the order, returns free escrow or keeps paid escrow in the house contract, and delivers the item NFT.
+7. The user can redeem the NFT for 99% of its price within 1 hour, returning the NFT to store inventory.
+8. Expired redemption claims can be settled onchain; the NFT remains a collectible and the house liability unlocks.
 
 ## Local Setup
 
@@ -19,14 +21,15 @@ pnpm --filter @tempo-maybe-pay/contracts test
 pnpm --filter @tempo-maybe-pay/web dev
 ```
 
-Copy `apps/web/.env.example` to `apps/web/.env.local` after contracts are deployed.
+Copy `.env.example` or `apps/web/.env.example` to a local `.env.local` after contracts are deployed.
 
 ## Tempo testnet deployment
 
-- Store: `0x53e4b02Be21d629AFf3Cd6C8500913Bd48CAD8A1`
-- Item token: `0x150ee51799ED8Eba69fcfB1Bb35Af7295ad9B86a`
+- Store: `0x8d4D5049c23a49CF1819867889ef1b0B049F118A`
+- Item token: `0x8e02BA0dDE050d5101f18B0bCA7F82278D6483C9`
 - Payment token: `0x20c0000000000000000000000000000000000000`
-- Operator: `0xCdf374527991264A77073D83A6781eD6A121722B`
+- Operator: `0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4`
+- Initial house bankroll: `500 pathUSD`
 
 Deployment artifact: `packages/contracts/deployments/42431.json`.
 
@@ -45,7 +48,4 @@ pnpm check
 pnpm --filter @tempo-maybe-pay/web build
 ```
 
-The refreshed production smoke placed and processed both outcomes against `https://tempo-maybe-pay.vercel.app`:
-
-- Paid path: token `#5`, order tx `0x268a6611f5504e5bc761a2e0e9b73ebb2adf3b8e2f4394ddeb45a12555f54527`, process tx `0xae8873ad70a32b90b1829c4fe7bb45da71237445553501736cab562e6f58e5e1`
-- Free path: token `#6`, order tx `0xb68586f58106cbea9d77fc01e4c78be99a2d39d97a59fc71ccf00ce24c178c1b`, process tx `0x326eb4fa9595cd7eb56e95268f37c7e6fbaa2b539d96ec52aad600d34756bcc6`
+Testnet smoke covered free order resolution, 99% redemption, NFT restocking, and liability returning to zero.

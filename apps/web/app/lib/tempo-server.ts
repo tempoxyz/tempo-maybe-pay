@@ -15,11 +15,12 @@ const zeroBytes32 = '0x000000000000000000000000000000000000000000000000000000000
 
 type EpochTuple = readonly [Hex, bigint, bigint, Hex, boolean]
 type OrderTuple = readonly [Hex, bigint, bigint, bigint, bigint, number, Hex, number, bigint, bigint]
+type RedemptionTuple = readonly [bigint, bigint, boolean]
 
 function getOperatorPrivateKey(): Hex {
-  const key = process.env.OPERATOR_PRIVATE_KEY
+  const key = process.env.MAYBEPAY_PROCESSOR_PRIVATE_KEY ?? process.env.OPERATOR_PRIVATE_KEY
   if (!key?.match(/^0x[0-9a-fA-F]{64}$/)) {
-    throw new Error('OPERATOR_PRIVATE_KEY is missing or invalid')
+    throw new Error('MAYBEPAY_PROCESSOR_PRIVATE_KEY is missing or invalid')
   }
   return key as Hex
 }
@@ -189,6 +190,72 @@ export async function readNftOwner(chainIdInput: string | number | null | undefi
     args: [tokenId],
     functionName: 'ownerOf',
   }) as Promise<Hex>
+}
+
+export async function readRedemption(chainIdInput: string | number | null | undefined, tokenId: bigint) {
+  const deployment = getServerDeployment(chainIdInput)
+  const client = getTempoClient(deployment.chainId)
+  const store = deployment.store
+  if (!store) throw new Error('Store is not deployed')
+
+  const redemption = (await client.readContract({
+    abi: maybePayStoreAbi,
+    address: store,
+    args: [tokenId],
+    functionName: 'redemptions',
+  })) as RedemptionTuple
+
+  return {
+    value: redemption[0],
+    deadline: redemption[1],
+    active: redemption[2],
+  }
+}
+
+export async function readHouseStats(chainIdInput: string | number | null | undefined) {
+  const deployment = getServerDeployment(chainIdInput)
+  const client = getTempoClient(deployment.chainId)
+  const store = deployment.store
+  if (!store) throw new Error('Store is not deployed')
+
+  const [bankroll, availableReserve, outstandingLiability, pendingEscrow] = await Promise.all([
+    client.readContract({
+      abi: [
+        {
+          type: 'function',
+          name: 'balanceOf',
+          stateMutability: 'view',
+          inputs: [{ name: 'account', type: 'address' }],
+          outputs: [{ type: 'uint256' }],
+        },
+      ],
+      address: deployment.paymentToken,
+      args: [store],
+      functionName: 'balanceOf',
+    }) as Promise<bigint>,
+    client.readContract({
+      abi: maybePayStoreAbi,
+      address: store,
+      functionName: 'availableHouseReserve',
+    }) as Promise<bigint>,
+    client.readContract({
+      abi: maybePayStoreAbi,
+      address: store,
+      functionName: 'outstandingRedemptionLiability',
+    }) as Promise<bigint>,
+    client.readContract({
+      abi: maybePayStoreAbi,
+      address: store,
+      functionName: 'pendingEscrowTotal',
+    }) as Promise<bigint>,
+  ])
+
+  return {
+    availableReserve,
+    bankroll,
+    outstandingLiability,
+    pendingEscrow,
+  }
 }
 
 export function orderStatusName(status: number): 'none' | 'pending' | 'paid' | 'free' | 'refunded' {

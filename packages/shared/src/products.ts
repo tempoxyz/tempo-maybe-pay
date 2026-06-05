@@ -152,3 +152,7 @@ export function quoteMaxEscrow(basePrice: bigint, payProbabilityBps: number): bi
   const numerator = basePrice * 10_000n
   return (numerator + BigInt(payProbabilityBps) - 1n) / BigInt(payProbabilityBps)
 }
+
+export function quoteRedeemValue(basePrice: bigint): bigint {
+  return (basePrice * 9_900n) / 10_000n
+}

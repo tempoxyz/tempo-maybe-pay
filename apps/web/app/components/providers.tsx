@@ -13,10 +13,6 @@ const wagmiConfig = createConfig({
   chains: [tempoModerato, tempo],
   connectors: [
     tempoWallet({
-      feePayer: {
-        precedence: 'user-first',
-        url: 'https://sponsor.moderato.tempo.xyz',
-      },
       testnet: true,
     }),
   ],

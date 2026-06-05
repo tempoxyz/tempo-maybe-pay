@@ -5,8 +5,10 @@ import {
   getTempoClient,
   orderStatusName,
   readEpoch,
+  readHouseStats,
   readNftOwner,
   readOrder,
+  readRedemption,
 } from '@/app/lib/tempo-server'
 import { maybePayStoreAbi } from '@tempo-maybe-pay/shared'
 import { NextResponse, type NextRequest } from 'next/server'
@@ -31,9 +33,11 @@ async function buildResolvedResponse(
     return new NextResponse(`Order resolved to unexpected status ${status}`, { status: 500 })
   }
 
-  const [epoch, nftOwner] = await Promise.all([
+  const [epoch, nftOwner, redemption, houseStats] = await Promise.all([
     readEpoch(deployment.chainId, order.epochId),
     readNftOwner(deployment.chainId, order.tokenId),
+    readRedemption(deployment.chainId, order.tokenId),
+    readHouseStats(deployment.chainId),
   ])
   const seed = deriveEpochSeed(deployment, order.epochId)
   const paidAmount = status === 'paid' ? order.maxEscrow : 0n
@@ -45,6 +49,10 @@ async function buildResolvedResponse(
     commitment: epoch.commitment,
     epochId: order.epochId.toString(),
     maxEscrow: order.maxEscrow.toString(),
+    houseAvailableReserve: houseStats.availableReserve.toString(),
+    houseBankroll: houseStats.bankroll.toString(),
+    houseOutstandingLiability: houseStats.outstandingLiability.toString(),
+    housePendingEscrow: houseStats.pendingEscrow.toString(),
     merchant: deployment.merchant,
     metadataHash: order.metadataHash,
     nftOwner,
@@ -54,6 +62,9 @@ async function buildResolvedResponse(
     processTransactionHash,
     productId: order.productId.toString(),
     refundedAmount: refundedAmount.toString(),
+    redeemActive: redemption.active,
+    redeemDeadline: redemption.deadline.toString(),
+    redeemValue: redemption.value.toString(),
     roll: order.roll.toString(),
     seed,
     status,

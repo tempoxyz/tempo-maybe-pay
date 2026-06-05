@@ -9,6 +9,8 @@ import {TempoMaybePayNFT} from "./TempoMaybePayNFT.sol";
 contract TempoMaybePayStore is Owned, ReentrancyGuard {
     uint16 public constant BPS = 10_000;
     uint16 public constant MIN_PAY_PROBABILITY_BPS = 100;
+    uint16 public constant REDEEM_BPS = 9_900;
+    uint64 public constant REDEEM_WINDOW = 1 hours;
 
     enum OrderStatus {
         None,
@@ -49,25 +51,30 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         uint256 tokenId;
     }
 
+    struct Redemption {
+        uint256 value;
+        uint64 deadline;
+        bool active;
+    }
+
     ITIP20 public immutable paymentToken;
     TempoMaybePayNFT public immutable nft;
     address public merchant;
     uint256 public currentEpochId;
+    uint256 public pendingEscrowTotal;
+    uint256 public outstandingRedemptionLiability;
 
     mapping(uint256 productId => Product product) public products;
     mapping(uint256 epochId => Epoch epoch) public epochs;
     mapping(bytes32 orderId => Order order) public orders;
     mapping(address processor => bool enabled) public processors;
+    mapping(uint256 tokenId => Redemption redemption) public redemptions;
+    mapping(uint256 productId => uint256[] tokenIds) private productInventory;
 
     event MerchantUpdated(address indexed merchant);
     event ProcessorUpdated(address indexed processor, bool enabled);
     event ProductSet(
-        uint256 indexed productId,
-        string name,
-        uint256 basePrice,
-        uint256 maxSupply,
-        bool active,
-        string metadataURI
+        uint256 indexed productId, string name, uint256 basePrice, uint256 maxSupply, bool active, string metadataURI
     );
     event EpochOpened(uint256 indexed epochId, bytes32 indexed commitment, uint64 revealDeadline);
     event OrderPlaced(
@@ -87,9 +94,13 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         OrderStatus status,
         uint256 roll,
         uint256 paidAmount,
-        uint256 refundedAmount
+        uint256 refundedAmount,
+        uint256 redeemValue,
+        uint64 redeemDeadline
     );
     event OrderRefunded(bytes32 indexed orderId, address indexed buyer, uint256 amount);
+    event NftRedeemed(address indexed redeemer, uint256 indexed tokenId, uint256 indexed productId, uint256 amount);
+    event RedemptionExpired(uint256 indexed tokenId, uint256 amount);
 
     error InvalidProbability();
     error InvalidProduct();
@@ -100,6 +111,10 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
     error DeadlineNotPassed();
     error CommitmentMismatch();
     error TokenTransferFailed();
+    error HouseBankrupt();
+    error RedemptionInactive();
+    error RedemptionNotExpired();
+    error NotTokenOwner();
 
     modifier onlyProcessor() {
         if (msg.sender != owner && !processors[msg.sender]) revert Unauthorized();
@@ -152,8 +167,10 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         if (commitment == bytes32(0) || revealDeadline <= block.timestamp) revert InvalidEpoch();
 
         Epoch storage current = epochs[currentEpochId];
-        if (currentEpochId != 0 && current.orderId != bytes32(0) && !current.revealed && block.timestamp <= current.revealDeadline)
-        {
+        if (
+            currentEpochId != 0 && current.orderId != bytes32(0) && !current.revealed
+                && block.timestamp <= current.revealDeadline
+        ) {
             revert EpochBusy();
         }
 
@@ -171,19 +188,34 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
 
     function quoteMaxEscrow(uint256 productId, uint16 payProbabilityBps) public view returns (uint256) {
         Product storage product = products[productId];
-        if (!product.active || product.basePrice == 0 || product.minted + product.reserved >= product.maxSupply) {
+        if (!product.active || product.basePrice == 0 || !_hasAvailableStock(productId, product)) {
             revert InvalidProduct();
         }
         if (payProbabilityBps < MIN_PAY_PROBABILITY_BPS || payProbabilityBps > BPS) revert InvalidProbability();
         return _ceilDiv(product.basePrice * BPS, payProbabilityBps);
     }
 
-    function placeOrder(
-        bytes32 orderId,
-        uint256 productId,
-        uint16 payProbabilityBps,
-        bytes32 metadataHash
-    ) external nonReentrant returns (uint256 maxEscrow) {
+    function quoteRedeemValue(uint256 productId) public view returns (uint256) {
+        Product storage product = products[productId];
+        if (!product.active || product.basePrice == 0) revert InvalidProduct();
+        return (product.basePrice * REDEEM_BPS) / BPS;
+    }
+
+    function productInventoryCount(uint256 productId) external view returns (uint256) {
+        return productInventory[productId].length;
+    }
+
+    function availableHouseReserve() public view returns (uint256) {
+        uint256 locked = pendingEscrowTotal + outstandingRedemptionLiability;
+        uint256 balance = paymentToken.balanceOf(address(this));
+        return balance > locked ? balance - locked : 0;
+    }
+
+    function placeOrder(bytes32 orderId, uint256 productId, uint16 payProbabilityBps, bytes32 metadataHash)
+        external
+        nonReentrant
+        returns (uint256 maxEscrow)
+    {
         return _placeOrder(orderId, productId, payProbabilityBps, metadataHash);
     }
 
@@ -202,7 +234,12 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         _placeOrderWithEscrow(orderId, productId, payProbabilityBps, metadataHash, maxEscrow);
     }
 
-    function processOrder(bytes32 orderId, bytes32 seed) external onlyProcessor nonReentrant returns (bool paid, uint256 tokenId) {
+    function processOrder(bytes32 orderId, bytes32 seed)
+        external
+        onlyProcessor
+        nonReentrant
+        returns (bool paid, uint256 tokenId)
+    {
         Order storage order = orders[orderId];
         if (order.status != OrderStatus.Pending) revert OrderNotPending();
 
@@ -211,8 +248,8 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
 
         Product storage product = products[order.productId];
         product.reserved -= 1;
-        product.minted += 1;
         epoch.revealed = true;
+        pendingEscrowTotal -= order.maxEscrow;
 
         uint256 roll = uint256(
             keccak256(
@@ -238,16 +275,22 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         uint256 refundedAmount;
         if (paid) {
             paidAmount = order.maxEscrow;
-            paymentToken.transferWithMemo(merchant, order.maxEscrow, orderId);
         } else {
             refundedAmount = order.maxEscrow;
             paymentToken.transferWithMemo(order.buyer, order.maxEscrow, orderId);
         }
 
-        tokenId = nft.mint(order.buyer, order.productId, product.metadataURI);
+        tokenId = _deliverNft(order.buyer, order.productId, product);
         order.tokenId = tokenId;
 
-        emit OrderResolved(orderId, order.buyer, tokenId, order.status, roll, paidAmount, refundedAmount);
+        uint256 redeemValue = (order.basePrice * REDEEM_BPS) / BPS;
+        uint64 redeemDeadline = uint64(block.timestamp + REDEEM_WINDOW);
+        redemptions[tokenId] = Redemption({value: redeemValue, deadline: redeemDeadline, active: true});
+        outstandingRedemptionLiability += redeemValue;
+
+        emit OrderResolved(
+            orderId, order.buyer, tokenId, order.status, roll, paidAmount, refundedAmount, redeemValue, redeemDeadline
+        );
     }
 
     function refundExpired(bytes32 orderId) external nonReentrant {
@@ -258,17 +301,49 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
 
         Product storage product = products[order.productId];
         product.reserved -= 1;
+        pendingEscrowTotal -= order.maxEscrow;
         order.status = OrderStatus.Refunded;
         paymentToken.transferWithMemo(order.buyer, order.maxEscrow, orderId);
         emit OrderRefunded(orderId, order.buyer, order.maxEscrow);
     }
 
-    function _placeOrder(
-        bytes32 orderId,
-        uint256 productId,
-        uint16 payProbabilityBps,
-        bytes32 metadataHash
-    ) private returns (uint256 maxEscrow) {
+    function redeem(uint256 tokenId) external nonReentrant {
+        Redemption storage redemption = redemptions[tokenId];
+        if (!redemption.active || redemption.value == 0) revert RedemptionInactive();
+        if (block.timestamp > redemption.deadline) revert DeadlineNotPassed();
+        if (nft.ownerOf(tokenId) != msg.sender) revert NotTokenOwner();
+
+        uint256 amount = redemption.value;
+        uint256 productId = nft.tokenProduct(tokenId);
+        _clearRedemption(redemption);
+
+        nft.transferFrom(msg.sender, address(this), tokenId);
+        productInventory[productId].push(tokenId);
+        paymentToken.transferWithMemo(msg.sender, amount, bytes32(tokenId));
+
+        emit NftRedeemed(msg.sender, tokenId, productId, amount);
+    }
+
+    function expireRedemption(uint256 tokenId) public {
+        Redemption storage redemption = redemptions[tokenId];
+        if (!redemption.active || redemption.value == 0) revert RedemptionInactive();
+        if (block.timestamp <= redemption.deadline) revert RedemptionNotExpired();
+
+        uint256 amount = redemption.value;
+        _clearRedemption(redemption);
+        emit RedemptionExpired(tokenId, amount);
+    }
+
+    function expireRedemptions(uint256[] calldata tokenIds) external {
+        for (uint256 i = 0; i < tokenIds.length; i += 1) {
+            expireRedemption(tokenIds[i]);
+        }
+    }
+
+    function _placeOrder(bytes32 orderId, uint256 productId, uint16 payProbabilityBps, bytes32 metadataHash)
+        private
+        returns (uint256 maxEscrow)
+    {
         maxEscrow = quoteMaxEscrow(productId, payProbabilityBps);
         _placeOrderWithEscrow(orderId, productId, payProbabilityBps, metadataHash, maxEscrow);
     }
@@ -290,8 +365,12 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         ) revert InvalidEpoch();
 
         Product storage product = products[productId];
+        if (!_hasAvailableStock(productId, product)) revert InvalidProduct();
+        if (availableHouseReserve() < (product.basePrice * REDEEM_BPS) / BPS) revert HouseBankrupt();
+
         product.reserved += 1;
         epoch.orderId = orderId;
+        pendingEscrowTotal += maxEscrow;
 
         orders[orderId] = Order({
             buyer: msg.sender,
@@ -324,5 +403,31 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
     function _ceilDiv(uint256 numerator, uint256 denominator) private pure returns (uint256) {
         return numerator == 0 ? 0 : ((numerator - 1) / denominator) + 1;
     }
-}
 
+    function _deliverNft(address buyer, uint256 productId, Product storage product) private returns (uint256 tokenId) {
+        uint256[] storage inventory = productInventory[productId];
+        if (inventory.length != 0) {
+            tokenId = inventory[inventory.length - 1];
+            inventory.pop();
+            nft.transferFrom(address(this), buyer, tokenId);
+            return tokenId;
+        }
+
+        product.minted += 1;
+        return nft.mint(buyer, productId, product.metadataURI);
+    }
+
+    function _hasAvailableStock(uint256 productId, Product storage product) private view returns (bool) {
+        uint256 availableInventory = productInventory[productId].length;
+        uint256 mintable = product.minted < product.maxSupply ? product.maxSupply - product.minted : 0;
+        return availableInventory + mintable > product.reserved;
+    }
+
+    function _clearRedemption(Redemption storage redemption) private {
+        uint256 amount = redemption.value;
+        redemption.value = 0;
+        redemption.deadline = 0;
+        redemption.active = false;
+        outstandingRedemptionLiability -= amount;
+    }
+}

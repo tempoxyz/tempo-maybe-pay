@@ -6,16 +6,18 @@ import {
   explorerTxUrl,
   formatPathUsd,
   getDeployment,
+  maybePayNftAbi,
   maybePayStoreAbi,
   normalizeChainId,
   products,
   quoteMaxEscrow,
+  quoteRedeemValue,
   tip20Abi,
   type ChainId,
 } from '@tempo-maybe-pay/shared'
-import { ArrowRight, CheckCircle2, ExternalLink, RefreshCw, ShieldCheck, Wallet } from 'lucide-react'
+import { ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { encodeFunctionData, keccak256, stringToHex, zeroAddress, type Hex } from 'viem'
 import {
   useAccount,
@@ -23,17 +25,22 @@ import {
   useConnect,
   useDisconnect,
   useReadContract,
+  useReadContracts,
   useSendTransactionSync,
   useSwitchChain,
 } from 'wagmi'
 
-type Stage = 'idle' | 'epoch' | 'placing' | 'processing' | 'resolved'
+type Stage = 'idle' | 'epoch' | 'placing' | 'processing' | 'redeeming' | 'expiring' | 'resolved'
 
 type ProcessResult = {
   basePrice: string
   buyer: Hex
   commitment: Hex
   epochId: string
+  houseAvailableReserve: string
+  houseBankroll: string
+  houseOutstandingLiability: string
+  housePendingEscrow: string
   maxEscrow: string
   merchant?: Hex
   metadataHash: Hex
@@ -44,11 +51,24 @@ type ProcessResult = {
   processTransactionHash?: Hex
   productId: string
   refundedAmount: string
+  redeemActive: boolean
+  redeemDeadline: string
+  redeemValue: string
   roll: string
   seed: Hex
   status: 'paid' | 'free'
   threshold: string
   tokenId: string
+}
+
+type OwnedClaim = {
+  tokenId: bigint
+  productId?: bigint
+  productName: string
+  redeemValue: bigint
+  deadline: bigint
+  active: boolean
+  expired: boolean
 }
 
 function shortValue(value: string, visible = 6): string {
@@ -65,8 +85,20 @@ function formatPercent(bps: number): string {
   return `${(bps / 100).toFixed(0)}%`
 }
 
+function formatBps(bps: number): string {
+  return `${(bps / 100).toFixed(0)}%`
+}
+
 function formatRawPathUsd(raw: string | bigint): string {
   return formatPathUsd(typeof raw === 'bigint' ? raw : BigInt(raw))
+}
+
+function formatCountdown(deadline: bigint, nowSeconds: number): string {
+  const remaining = Number(deadline) - nowSeconds
+  if (remaining <= 0) return 'Expired'
+  const minutes = Math.floor(remaining / 60)
+  const seconds = remaining % 60
+  return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
 }
 
 type ShopProps = {
@@ -92,7 +124,14 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const [stage, setStage] = useState<Stage>('idle')
   const [error, setError] = useState<string | undefined>()
   const [placeTransactionHash, setPlaceTransactionHash] = useState<Hex | undefined>()
+  const [redemptionTransactionHash, setRedemptionTransactionHash] = useState<Hex | undefined>()
   const [result, setResult] = useState<ProcessResult | undefined>()
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   const isCheckoutPage = checkoutProductId !== undefined
   const product = products.find((item) => item.id === (checkoutProductId ?? products[0].id)) ?? products[0]
@@ -100,6 +139,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
     () => quoteMaxEscrow(product.basePrice, payProbabilityBps),
     [payProbabilityBps, product.basePrice],
   )
+  const redeemValue = quoteRedeemValue(product.basePrice)
   const multiplier = Number((maxEscrow * 100n) / product.basePrice) / 100
   const paidRollRange = `0-${payProbabilityBps - 1}`
   const freeRollRange = payProbabilityBps === 10_000 ? 'none' : `${payProbabilityBps}-9999`
@@ -119,20 +159,167 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   })
 
   const balance = typeof balanceQuery.data === 'bigint' ? balanceQuery.data : 0n
+  const houseBankrollQuery = useReadContract({
+    abi: tip20Abi,
+    address: deployment.paymentToken,
+    args: [deployment.store ?? zeroAddress],
+    chainId: selectedChainId,
+    functionName: 'balanceOf',
+    query: {
+      enabled: Boolean(deployment.store),
+      refetchInterval: 5_000,
+    },
+  })
+
+  const availableReserveQuery = useReadContract({
+    abi: maybePayStoreAbi,
+    address: deployment.store ?? zeroAddress,
+    chainId: selectedChainId,
+    functionName: 'availableHouseReserve',
+    query: {
+      enabled: Boolean(deployment.store),
+      refetchInterval: 5_000,
+    },
+  })
+
+  const outstandingLiabilityQuery = useReadContract({
+    abi: maybePayStoreAbi,
+    address: deployment.store ?? zeroAddress,
+    chainId: selectedChainId,
+    functionName: 'outstandingRedemptionLiability',
+    query: {
+      enabled: Boolean(deployment.store),
+      refetchInterval: 5_000,
+    },
+  })
+
+  const pendingEscrowQuery = useReadContract({
+    abi: maybePayStoreAbi,
+    address: deployment.store ?? zeroAddress,
+    chainId: selectedChainId,
+    functionName: 'pendingEscrowTotal',
+    query: {
+      enabled: Boolean(deployment.store),
+      refetchInterval: 5_000,
+    },
+  })
+
+  const inventoryQuery = useReadContract({
+    abi: maybePayStoreAbi,
+    address: deployment.store ?? zeroAddress,
+    args: [BigInt(product.id)],
+    chainId: selectedChainId,
+    functionName: 'productInventoryCount',
+    query: {
+      enabled: Boolean(deployment.store),
+      refetchInterval: 5_000,
+    },
+  })
+
+  const tokenIdsQuery = useReadContract({
+    abi: maybePayNftAbi,
+    address: deployment.nft ?? zeroAddress,
+    args: [address ?? zeroAddress],
+    chainId: selectedChainId,
+    functionName: 'tokensOfOwner',
+    query: {
+      enabled: Boolean(address && deployment.nft),
+      refetchInterval: 5_000,
+    },
+  })
+
+  const ownedTokenIds = (tokenIdsQuery.data ?? []) as readonly bigint[]
+  const ownedClaimContracts = useMemo(
+    () =>
+      ownedTokenIds.flatMap((tokenId) => [
+        {
+          abi: maybePayStoreAbi,
+          address: deployment.store ?? zeroAddress,
+          args: [tokenId],
+          chainId: selectedChainId,
+          functionName: 'redemptions',
+        },
+        {
+          abi: maybePayNftAbi,
+          address: deployment.nft ?? zeroAddress,
+          args: [tokenId],
+          chainId: selectedChainId,
+          functionName: 'tokenProduct',
+        },
+      ]),
+    [deployment.nft, deployment.store, ownedTokenIds, selectedChainId],
+  )
+  const ownedClaimsQuery = useReadContracts({
+    contracts: ownedClaimContracts,
+    query: {
+      enabled: chainReady && ownedClaimContracts.length > 0,
+      refetchInterval: 5_000,
+    },
+  })
+
+  const houseBankroll = typeof houseBankrollQuery.data === 'bigint' ? houseBankrollQuery.data : 0n
+  const availableReserve = typeof availableReserveQuery.data === 'bigint' ? availableReserveQuery.data : 0n
+  const outstandingLiability =
+    typeof outstandingLiabilityQuery.data === 'bigint' ? outstandingLiabilityQuery.data : 0n
+  const pendingEscrow = typeof pendingEscrowQuery.data === 'bigint' ? pendingEscrowQuery.data : 0n
+  const inventoryCount = typeof inventoryQuery.data === 'bigint' ? inventoryQuery.data : 0n
+  const canUnderwrite = !chainReady || availableReserve >= redeemValue
   const hasFunds = !address || balance >= maxEscrow
-  const busy = stage === 'epoch' || stage === 'placing' || stage === 'processing' || sendTransactionSync.isPending
+  const houseSolvent = !chainReady || availableReserve > 0n
+  const busy =
+    stage === 'epoch' ||
+    stage === 'placing' ||
+    stage === 'processing' ||
+    stage === 'redeeming' ||
+    stage === 'expiring' ||
+    sendTransactionSync.isPending
   const roll = result ? Number(result.roll) : undefined
   const rollPercent = roll === undefined ? undefined : `${roll / 100}%`
   const oddsStyle = {
     '--pay-pct': `${payProbabilityBps / 100}%`,
     '--roll-pct': rollPercent ?? '0%',
   } as CSSProperties
+  const ownedClaims = useMemo<OwnedClaim[]>(() => {
+    return ownedTokenIds.map((tokenId, index) => {
+      const redemption = ownedClaimsQuery.data?.[index * 2]?.result as readonly [bigint, bigint, boolean] | undefined
+      const tokenProductId = ownedClaimsQuery.data?.[index * 2 + 1]?.result as bigint | undefined
+      const claimProduct = products.find((item) => BigInt(item.id) === tokenProductId)
+      const deadline = redemption?.[1] ?? 0n
+      const active = redemption?.[2] ?? false
+
+      return {
+        tokenId,
+        productId: tokenProductId,
+        productName: claimProduct?.name ?? `Product #${tokenProductId?.toString() ?? '?'}`,
+        redeemValue: redemption?.[0] ?? 0n,
+        deadline,
+        active,
+        expired: active && deadline > 0n && Number(deadline) < nowSeconds,
+      }
+    })
+  }, [nowSeconds, ownedClaimsQuery.data, ownedTokenIds])
+  const activeClaims = ownedClaims.filter((claim) => claim.active && !claim.expired)
+  const expiredClaims = ownedClaims.filter((claim) => claim.expired)
+  const collectibleClaims = ownedClaims.filter((claim) => !claim.active)
 
   async function changeNetwork(nextChainId: ChainId) {
     router.replace(isCheckoutPage ? `/checkout/${product.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`)
     if (isConnected && chainId !== nextChainId) {
       await switchChainAsync({ chainId: nextChainId })
     }
+  }
+
+  async function refetchLiveData() {
+    await Promise.all([
+      balanceQuery.refetch(),
+      houseBankrollQuery.refetch(),
+      availableReserveQuery.refetch(),
+      outstandingLiabilityQuery.refetch(),
+      pendingEscrowQuery.refetch(),
+      inventoryQuery.refetch(),
+      tokenIdsQuery.refetch(),
+      ownedClaimsQuery.refetch(),
+    ])
   }
 
   async function beginCheckout() {
@@ -144,6 +331,10 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       setError('Checkout is not available on this network yet.')
       return
     }
+    if (!canUnderwrite) {
+      setError('The house is bankrupt for this item. Wait for claims to expire or pick a smaller product.')
+      return
+    }
     if (!hasFunds) {
       setError(`Wallet needs at least ${formatPathUsd(maxEscrow)} pathUSD for this probability.`)
       return
@@ -152,6 +343,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
     setError(undefined)
     setResult(undefined)
     setPlaceTransactionHash(undefined)
+    setRedemptionTransactionHash(undefined)
 
     try {
       if (!connectedToSelectedChain) {
@@ -206,10 +398,89 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       const processed = (await processResponse.json()) as ProcessResult
       setResult(processed)
       setStage('resolved')
-      await balanceQuery.refetch()
+      await refetchLiveData()
     } catch (caught) {
       setStage('idle')
       setError(caught instanceof Error ? caught.message : 'Checkout failed.')
+    }
+  }
+
+  async function redeemToken(tokenId: bigint) {
+    if (!address || !deployment.store || !deployment.nft) {
+      setError('Connect a wallet with a redeemable NFT first.')
+      return
+    }
+
+    setError(undefined)
+    setStage('redeeming')
+
+    try {
+      if (!connectedToSelectedChain) {
+        await switchChainAsync({ chainId: selectedChainId })
+      }
+
+      const approveData = encodeFunctionData({
+        abi: maybePayNftAbi,
+        args: [deployment.store, tokenId],
+        functionName: 'approve',
+      })
+      const redeemData = encodeFunctionData({
+        abi: maybePayStoreAbi,
+        args: [tokenId],
+        functionName: 'redeem',
+      })
+      const receipt = await sendTransactionSync.mutateAsync({
+        calls: [
+          { data: approveData, to: deployment.nft },
+          { data: redeemData, to: deployment.store },
+        ],
+        chainId: selectedChainId,
+        feeToken: deployment.paymentToken,
+      })
+      const hash = receipt.transactionHash ?? receipt.hash
+      setRedemptionTransactionHash(hash)
+      setResult((current) =>
+        current?.tokenId === tokenId.toString() ? { ...current, redeemActive: false } : current,
+      )
+      setStage('resolved')
+      await refetchLiveData()
+    } catch (caught) {
+      setStage(result ? 'resolved' : 'idle')
+      setError(caught instanceof Error ? caught.message : 'Redemption failed.')
+    }
+  }
+
+  async function expireToken(tokenId: bigint) {
+    if (!deployment.store) {
+      setError('Checkout is not available on this network yet.')
+      return
+    }
+
+    setError(undefined)
+    setStage('expiring')
+
+    try {
+      if (!connectedToSelectedChain) {
+        await switchChainAsync({ chainId: selectedChainId })
+      }
+
+      const data = encodeFunctionData({
+        abi: maybePayStoreAbi,
+        args: [tokenId],
+        functionName: 'expireRedemption',
+      })
+      const receipt = await sendTransactionSync.mutateAsync({
+        calls: [{ data, to: deployment.store }],
+        chainId: selectedChainId,
+        feeToken: deployment.paymentToken,
+      })
+      const hash = receipt.transactionHash ?? receipt.hash
+      setRedemptionTransactionHash(hash)
+      setStage(result ? 'resolved' : 'idle')
+      await refetchLiveData()
+    } catch (caught) {
+      setStage(result ? 'resolved' : 'idle')
+      setError(caught instanceof Error ? caught.message : 'Could not expire claim.')
     }
   }
 
@@ -259,12 +530,37 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         <>
           <section className="hero">
             <div>
-              <h1>Buy now. Pay maybe.</h1>
+              <h1>Try to bankrupt the house.</h1>
             </div>
             <p>
-              Choose an item, set your payment odds, and settle with pathUSD on Tempo. Every order mints
-              the item token to your wallet; the chain decides whether the item is free or not.
+              Pick a product, choose your variance, and race the 1-hour cash-out window. Every NFT can be
+              redeemed for 99% of its price while the house bankroll lasts.
             </p>
+          </section>
+
+          <section className={`houseDashboard ${houseSolvent ? '' : 'bankrupt'}`}>
+            <div className="houseLead">
+              <span className="eyebrow">House bankroll</span>
+              <strong>{chainReady ? `${formatPathUsd(houseBankroll)} pathUSD` : 'Not deployed'}</strong>
+              <p>
+                Paid orders refill the house. Free orders mint redeemable claims. Active NFTs can cash out for{' '}
+                {formatBps(9_900)} for 1 hour.
+              </p>
+            </div>
+            <div className="houseStats">
+              <div>
+                <span>Available reserve</span>
+                <strong>{chainReady ? `${formatPathUsd(availableReserve)} pathUSD` : '-'}</strong>
+              </div>
+              <div>
+                <span>Live NFT claims</span>
+                <strong>{chainReady ? `${formatPathUsd(outstandingLiability)} pathUSD` : '-'}</strong>
+              </div>
+              <div>
+                <span>Pending escrow</span>
+                <strong>{chainReady ? `${formatPathUsd(pendingEscrow)} pathUSD` : '-'}</strong>
+              </div>
+            </div>
           </section>
 
           <div className="heroDivider" />
@@ -285,6 +581,20 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
               <div>
                 <span className="productCategory">{product.category}</span>
                 <p>{product.description}</p>
+                <div className="productEconomics">
+                  <div>
+                    <span>Cash-out value</span>
+                    <strong>{formatPathUsd(redeemValue)} pathUSD</strong>
+                  </div>
+                  <div>
+                    <span>Window</span>
+                    <strong>1 hour</strong>
+                  </div>
+                  <div>
+                    <span>Restocked</span>
+                    <strong>{inventoryCount.toString()}</strong>
+                  </div>
+                </div>
                 <div className="skuLine">
                   <span>{product.sku}</span>
                   <span>{product.category}</span>
@@ -293,22 +603,28 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </div>
           ) : (
             <div className="productGrid">
-              {products.map((item) => (
-                <button
-                  className="productCard"
-                  key={item.id}
-                  onClick={() => router.push(`/checkout/${item.id}?chainId=${selectedChainId}`)}
-                  style={{ '--accent': item.accent } as CSSProperties}
-                  type="button"
-                >
-                  <img alt={item.name} src={item.image} />
-                  <span className="productCategory">{item.category}</span>
-                  <strong>{item.name}</strong>
-                  <em>{item.tagline}</em>
-                  <span className="priceLine">{formatPathUsd(item.basePrice)} pathUSD</span>
-                  <span className="productAction">Checkout</span>
-                </button>
-              ))}
+              {products.map((item) => {
+                const itemRedeemValue = quoteRedeemValue(item.basePrice)
+                const productSolvent = !chainReady || availableReserve >= itemRedeemValue
+
+                return (
+                  <button
+                    className={`productCard ${productSolvent ? '' : 'bankruptProduct'}`}
+                    key={item.id}
+                    onClick={() => router.push(`/checkout/${item.id}?chainId=${selectedChainId}`)}
+                    style={{ '--accent': item.accent } as CSSProperties}
+                    type="button"
+                  >
+                    <img alt={item.name} src={item.image} />
+                    <span className="productCategory">{item.category}</span>
+                    <strong>{item.name}</strong>
+                    <em>{item.tagline}</em>
+                    <span className="priceLine">{formatPathUsd(item.basePrice)} pathUSD</span>
+                    <span className="redeemLine">{formatPathUsd(itemRedeemValue)} pathUSD cash-out</span>
+                    <span className="productAction">{productSolvent ? 'Checkout' : 'House bankrupt'}</span>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -318,10 +634,31 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           <div className="checkoutHeader">
             <p className="eyebrow">Maybe Pay checkout</p>
             <h2>{product.name}</h2>
-            <p>{product.description}</p>
+            <p>
+              {product.description} Cash out for {formatPathUsd(redeemValue)} pathUSD within 1 hour, or keep
+              it as a collectible after the claim expires.
+            </p>
             <div className="skuLine">
               <span>{product.sku}</span>
               <span>{product.category}</span>
+            </div>
+          </div>
+
+          <div className={`bankrollPanel ${canUnderwrite ? '' : 'bankrupt'}`}>
+            <div>
+              <Banknote size={18} />
+              <span>House available</span>
+              <strong>{chainReady ? `${formatPathUsd(availableReserve)} pathUSD` : '-'}</strong>
+            </div>
+            <div>
+              <Flame size={18} />
+              <span>This NFT claim</span>
+              <strong>{formatPathUsd(redeemValue)} pathUSD</strong>
+            </div>
+            <div>
+              <Clock3 size={18} />
+              <span>Cash-out window</span>
+              <strong>1 hour</strong>
             </div>
           </div>
 
@@ -369,12 +706,20 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                 <strong>0 pathUSD</strong>
               </div>
               <div>
-                <span>Expected cost</span>
+                <span>Expected payment</span>
                 <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
               </div>
               <div>
-                <span>Multiplier</span>
+                <span>NFT cash-out</span>
+                <strong>{formatPathUsd(redeemValue)} pathUSD</strong>
+              </div>
+              <div>
+                <span>Paid multiplier</span>
                 <strong>{multiplier.toFixed(2)}x</strong>
+              </div>
+              <div>
+                <span>House EV</span>
+                <strong>{formatPathUsd(product.basePrice - redeemValue)} pathUSD</strong>
               </div>
             </div>
           </div>
@@ -396,7 +741,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </div>
             <div>
               <span className="stepIndex">4</span>
-              <p>Roll below threshold pays treasury. Otherwise escrow returns to your wallet.</p>
+              <p>The house keeps paid escrow or returns free escrow. Either way, your NFT can redeem for 99% for 1 hour.</p>
             </div>
           </div>
 
@@ -419,11 +764,14 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </a>
           ) : null}
           {error ? <div className="error">{error}</div> : null}
+          {!canUnderwrite && chainReady ? (
+            <div className="error">The house cannot underwrite this NFT right now. Smaller items may still work.</div>
+          ) : null}
 
           <button
             className="primaryButton"
             type="button"
-            disabled={!isConnected || !chainReady || busy || !hasFunds}
+            disabled={!isConnected || !chainReady || busy || !hasFunds || !canUnderwrite}
             onClick={() => void beginCheckout()}
           >
             {busy ? <RefreshCw className="spin" size={18} /> : <ShieldCheck size={18} />}
@@ -433,6 +781,10 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                 ? 'Escrowing order'
                 : stage === 'processing'
                   ? 'Revealing roll'
+                  : stage === 'redeeming'
+                    ? 'Redeeming NFT'
+                    : stage === 'expiring'
+                      ? 'Expiring claim'
                   : 'Place order'}
             <ArrowRight size={18} />
           </button>
@@ -452,10 +804,30 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                     <strong>{formatRawPathUsd(result.maxEscrow)} pathUSD</strong>
                   </div>
                   <div>
-                    <span>{result.status === 'paid' ? 'Paid to treasury' : 'Returned'}</span>
+                    <span>{result.status === 'paid' ? 'Kept by house' : 'Returned'}</span>
                     <strong>
                       {formatRawPathUsd(result.status === 'paid' ? result.paidAmount : result.refundedAmount)} pathUSD
                     </strong>
+                  </div>
+                  <div>
+                    <span>NFT cash-out value</span>
+                    <strong>{formatRawPathUsd(result.redeemValue)} pathUSD</strong>
+                  </div>
+                  <div>
+                    <span>Cash-out timer</span>
+                    <strong>
+                      {result.redeemActive
+                        ? formatCountdown(BigInt(result.redeemDeadline), nowSeconds)
+                        : 'Claim closed'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>House bankroll</span>
+                    <strong>{formatRawPathUsd(result.houseBankroll)} pathUSD</strong>
+                  </div>
+                  <div>
+                    <span>Live claims</span>
+                    <strong>{formatRawPathUsd(result.houseOutstandingLiability)} pathUSD</strong>
                   </div>
                   <div>
                     <span>Epoch</span>
@@ -474,6 +846,29 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                     <strong>{shortValue(result.nftOwner)}</strong>
                   </div>
                 </div>
+                {result.redeemActive && Number(result.redeemDeadline) >= nowSeconds ? (
+                  <button
+                    className="secondaryButton dangerButton"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void redeemToken(BigInt(result.tokenId))}
+                  >
+                    {stage === 'redeeming' ? <RefreshCw className="spin" size={16} /> : <RotateCcw size={16} />}
+                    Redeem NFT for {formatRawPathUsd(result.redeemValue)} pathUSD
+                  </button>
+                ) : result.redeemActive ? (
+                  <button
+                    className="secondaryButton"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void expireToken(BigInt(result.tokenId))}
+                  >
+                    {stage === 'expiring' ? <RefreshCw className="spin" size={16} /> : <Clock3 size={16} />}
+                    Release expired claim
+                  </button>
+                ) : (
+                  <div className="notice">This NFT claim is closed. The token remains collectible.</div>
+                )}
                 <div className="linkStack">
                   {deployment.nft ? (
                     <a
@@ -489,7 +884,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   </a>
                   {result.merchant ? (
                     <a href={explorerAddressUrl(selectedChainId, result.merchant)} rel="noreferrer" target="_blank">
-                      Treasury address <ExternalLink size={13} />
+                      Merchant admin <ExternalLink size={13} />
                     </a>
                   ) : null}
                   {placeTransactionHash ? (
@@ -506,6 +901,15 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                       Resolution transaction <ExternalLink size={13} />
                     </a>
                   ) : null}
+                  {redemptionTransactionHash ? (
+                    <a
+                      href={explorerTxUrl(selectedChainId, redemptionTransactionHash)}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Redemption transaction <ExternalLink size={13} />
+                    </a>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -518,6 +922,77 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             >
               Order transaction <ExternalLink size={14} />
             </a>
+          ) : null}
+
+          {address && chainReady ? (
+            <div className="redemptionPanel">
+              <div className="redemptionHeader">
+                <div>
+                  <p className="eyebrow">My NFTs</p>
+                  <h3>Cash-out window</h3>
+                </div>
+                <span>{ownedTokenIds.length} owned</span>
+              </div>
+
+              {activeClaims.length === 0 && expiredClaims.length === 0 && collectibleClaims.length === 0 ? (
+                <div className="notice">No Tempo Maybe Pay NFTs in this wallet yet.</div>
+              ) : null}
+
+              {activeClaims.length > 0 ? (
+                <div className="claimList">
+                  {activeClaims.map((claim) => (
+                    <div className="claimCard activeClaim" key={claim.tokenId.toString()}>
+                      <div>
+                        <strong>
+                          #{claim.tokenId.toString()} {claim.productName}
+                        </strong>
+                        <span>{formatCountdown(claim.deadline, nowSeconds)} left</span>
+                      </div>
+                      <button
+                        className="secondaryButton dangerButton"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void redeemToken(claim.tokenId)}
+                      >
+                        {stage === 'redeeming' ? <RefreshCw className="spin" size={15} /> : <RotateCcw size={15} />}
+                        Redeem {formatPathUsd(claim.redeemValue)}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {expiredClaims.length > 0 ? (
+                <div className="claimList">
+                  {expiredClaims.map((claim) => (
+                    <div className="claimCard expiredClaim" key={claim.tokenId.toString()}>
+                      <div>
+                        <strong>
+                          #{claim.tokenId.toString()} {claim.productName}
+                        </strong>
+                        <span>Expired claim still counts until settled on-chain</span>
+                      </div>
+                      <button
+                        className="secondaryButton"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void expireToken(claim.tokenId)}
+                      >
+                        {stage === 'expiring' ? <RefreshCw className="spin" size={15} /> : <Clock3 size={15} />}
+                        Release
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {collectibleClaims.length > 0 ? (
+                <div className="collectibleLine">
+                  {collectibleClaims.length} collectible NFT{collectibleClaims.length === 1 ? '' : 's'} with no live
+                  cash-out claim.
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           {deployment.store ? (
