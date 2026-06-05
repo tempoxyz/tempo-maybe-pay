@@ -534,11 +534,11 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         <>
           <section className="hero">
             <div>
-              <h1>Try to bankrupt the house.</h1>
+              <h1>Buy now. Pay maybe.</h1>
             </div>
             <p>
               Pick a product, choose your variance, and race the 1-hour cash-out window. Every NFT can be
-              redeemed for 99% of its price while the house bankroll lasts.
+              redeemed for 99% of its price while the house bankroll lasts. Try to bankrupt the house!
             </p>
           </section>
 
