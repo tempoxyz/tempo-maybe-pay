@@ -2,7 +2,6 @@
 
 import {
   explorerAddressUrl,
-  explorerNftUrl,
   explorerTxUrl,
   formatPathUsd,
   getDeployment,
@@ -16,7 +15,7 @@ import {
   tip20Abi,
   type ChainId,
 } from '@tempo-maybe-pay/shared'
-import { ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
@@ -122,7 +121,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
     isPending: boolean
   }
 
-  const [payProbabilityBps, setPayProbabilityBps] = useState(5000)
+  const [freeProbabilityBps, setFreeProbabilityBps] = useState(5000)
   const [stage, setStage] = useState<Stage>('idle')
   const [error, setError] = useState<string | undefined>()
   const [placeTransactionHash, setPlaceTransactionHash] = useState<Hex | undefined>()
@@ -138,6 +137,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const isCheckoutPage = checkoutProductId !== undefined
   const product = products.find((item) => item.id === (checkoutProductId ?? products[0].id)) ?? products[0]
   const basePrice = getProductPrice(product, selectedChainId)
+  const payProbabilityBps = 10_000 - freeProbabilityBps
   const maxEscrow = useMemo(
     () => quoteMaxEscrow(basePrice, payProbabilityBps),
     [basePrice, payProbabilityBps],
@@ -145,7 +145,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const redeemValue = quoteRedeemValue(basePrice)
   const multiplier = Number((maxEscrow * 100n) / basePrice) / 100
   const paidRollRange = `0-${payProbabilityBps - 1}`
-  const freeRollRange = payProbabilityBps === 10_000 ? 'none' : `${payProbabilityBps}-9999`
+  const freeRollRange = freeProbabilityBps === 0 ? 'none' : `${payProbabilityBps}-9999`
   const chainReady = Boolean(deployment.store && deployment.nft)
   const connectedToSelectedChain = chainId === selectedChainId
 
@@ -577,7 +577,15 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             <div>
               <h2>{isCheckoutPage ? product.name : 'Choose an item'}</h2>
             </div>
-            <span>{isCheckoutPage ? `${formatPathUsd(basePrice)} pathUSD` : `${products.length} items available`}</span>
+            <div className="sectionActions">
+              {isCheckoutPage ? (
+                <Link className="secondaryButton backButton" href={`/?chainId=${selectedChainId}`}>
+                  <ArrowLeft size={14} />
+                  Go back to store
+                </Link>
+              ) : null}
+              <span>{isCheckoutPage ? `${formatPathUsd(basePrice)} pathUSD` : `${products.length} items available`}</span>
+            </div>
           </div>
           {isCheckoutPage ? (
             <div className="checkoutProduct">
@@ -639,10 +647,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           <div className="checkoutHeader">
             <p className="eyebrow">Maybe Pay checkout</p>
             <h2>{product.name}</h2>
-            <p>
-              {product.description} Cash out for {formatPathUsd(redeemValue)} pathUSD within 1 hour, or keep
-              it as a collectible after the claim expires.
-            </p>
+            <p>{product.description}</p>
             <div className="skuLine">
               <span>{product.sku}</span>
               <span>{product.category}</span>
@@ -669,15 +674,15 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
 
           <div className="oddsPanel" style={oddsStyle}>
             <label className="sliderLabel">
-              <span>Chance you pay</span>
-              <strong>{formatPercent(payProbabilityBps)}</strong>
+              <span>Chances its free</span>
+              <strong>{formatPercent(freeProbabilityBps)}</strong>
               <input
-                min={100}
-                max={10000}
+                min={0}
+                max={9900}
                 step={100}
                 type="range"
-                value={payProbabilityBps}
-                onChange={(event) => setPayProbabilityBps(Number(event.target.value))}
+                value={freeProbabilityBps}
+                onChange={(event) => setFreeProbabilityBps(Number(event.target.value))}
                 disabled={busy}
               />
             </label>
@@ -695,20 +700,20 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
 
             <div className="mathGrid">
               <div>
-                <span>Pay if roll is</span>
-                <strong>{paidRollRange}</strong>
-              </div>
-              <div>
                 <span>Free if roll is</span>
                 <strong>{freeRollRange}</strong>
               </div>
               <div>
-                <span>If paid</span>
-                <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
+                <span>Pay if roll is</span>
+                <strong>{paidRollRange}</strong>
               </div>
               <div>
-                <span>If returned</span>
+                <span>If free</span>
                 <strong>0 pathUSD</strong>
+              </div>
+              <div>
+                <span>If paid</span>
+                <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
               </div>
               <div>
                 <span>Expected payment</span>
@@ -727,32 +732,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                 <strong>{formatPathUsd(basePrice - redeemValue)} pathUSD</strong>
               </div>
             </div>
-          </div>
-
-          <div className="explainPanel" id="settlement">
-            <div>
-              <span className="stepIndex">1</span>
-              <p>A randomness commitment is posted on-chain before your order is placed.</p>
-            </div>
-            <div>
-              <span className="stepIndex">2</span>
-              <p>Your transaction escrows the maximum pathUSD amount and writes the order ID.</p>
-            </div>
-            <div>
-              <span className="stepIndex">3</span>
-              <p>
-                The processor reveals the seed; the contract rolls <code>hash(seed, order) % 10000</code>.
-              </p>
-            </div>
-            <div>
-              <span className="stepIndex">4</span>
-              <p>The house keeps paid escrow or returns free escrow. Either way, your NFT can redeem for 99% for 1 hour.</p>
-            </div>
-          </div>
-
-          <div className="balanceLine">
-            <span>Your balance</span>
-            <strong>{address ? `${formatPathUsd(balance)} pathUSD` : '-'}</strong>
           </div>
 
           {!chainReady ? (
@@ -875,15 +854,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   <div className="notice">This NFT claim is closed. The token remains collectible.</div>
                 )}
                 <div className="linkStack">
-                  {deployment.nft ? (
-                    <a
-                      href={explorerNftUrl(selectedChainId, deployment.nft, result.tokenId)}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      View item token #{result.tokenId} on Tempo Explorer <ExternalLink size={13} />
-                    </a>
-                  ) : null}
                   <a href={explorerAddressUrl(selectedChainId, result.nftOwner)} rel="noreferrer" target="_blank">
                     Wallet address <ExternalLink size={13} />
                   </a>
@@ -1000,16 +970,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </div>
           ) : null}
 
-          {deployment.store ? (
-            <a
-              className="contractLink"
-              href={explorerAddressUrl(selectedChainId, deployment.store)}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Store contract <ExternalLink size={13} />
-            </a>
-          ) : null}
           </aside>
         ) : null}
       </section>
