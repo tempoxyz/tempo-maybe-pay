@@ -174,12 +174,10 @@ a {
 
 .selectLabel span,
 .eyebrow,
-.productCategory,
 .mathGrid span,
 .receiptRows span,
 .houseStats span,
 .bankrollPanel span,
-.productEconomics span,
 .claimCard span {
   color: var(--color-gray-600);
   font-size: 11px;
@@ -326,7 +324,6 @@ h2 {
 }
 
 .houseStats strong,
-.productEconomics strong,
 .bankrollPanel strong {
   display: block;
   font-size: 14px;
@@ -410,10 +407,12 @@ h2 {
   border: 1px solid var(--color-gray-200);
   color: var(--color-black);
   cursor: pointer;
-  display: grid;
-  gap: 6px;
-  min-height: 100%;
-  padding: var(--spacing-12);
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  scroll-snap-align: start;
   text-align: left;
 }
 
@@ -426,6 +425,15 @@ h2 {
   background: #fffaf7;
 }
 
+.productCardStatic {
+  cursor: default;
+}
+
+.productCardStatic:hover {
+  border-color: var(--color-gray-200);
+  transform: none;
+}
+
 .productCard.selected {
   border-color: var(--color-black);
   box-shadow: inset 0 -4px 0 0 var(--color-black);
@@ -433,21 +441,31 @@ h2 {
 
 .productCard img {
   background: var(--color-gray-100);
-  border: 1px solid var(--color-gray-200);
   display: block;
-  height: clamp(138px, 14vw, 172px);
-  object-fit: cover;
-  object-position: center;
+  height: auto;
+  object-fit: contain;
   width: 100%;
 }
 
-.productCard strong {
-  font-size: 16px;
+.productOverlay {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--color-gray-200);
+  bottom: var(--spacing-12);
+  display: grid;
+  gap: 4px;
+  left: var(--spacing-12);
+  padding: var(--spacing-8);
+  position: absolute;
+  right: var(--spacing-12);
+}
+
+.productOverlay strong {
+  font-size: 15px;
   font-weight: 450;
   line-height: 1.12;
 }
 
-.productCard em {
+.productOverlay em {
   color: var(--color-gray-700);
   font-size: 11px;
   font-style: normal;
@@ -455,18 +473,19 @@ h2 {
   min-height: 0;
 }
 
-.priceLine {
-  color: var(--color-black);
+.productMoney {
+  align-items: center;
+  color: var(--color-gray-700);
+  display: flex;
+  flex-wrap: wrap;
   font-family: var(--font-code);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
+  gap: var(--spacing-8);
 }
 
-.redeemLine {
-  color: var(--color-gray-700);
-  font-family: var(--font-code);
-  font-size: 12px;
-  font-weight: 500;
+.productMoney span:first-child {
+  color: var(--color-black);
 }
 
 .productAction {
@@ -483,44 +502,7 @@ h2 {
 }
 
 .checkoutProduct {
-  background: var(--color-white);
-  border: 1px solid var(--color-gray-200);
-  display: grid;
-  gap: var(--spacing-16);
-  padding: var(--spacing-16);
-}
-
-.checkoutProduct > img {
-  background: var(--color-gray-100);
-  border: 1px solid var(--color-gray-200);
-  display: block;
-  height: clamp(130px, 16vw, 210px);
-  object-fit: contain;
-  width: 100%;
-}
-
-.checkoutProduct p {
-  color: var(--color-gray-700);
-  font-size: 15px;
-  line-height: 1.35;
-  margin: var(--spacing-12) 0 0;
-}
-
-.productEconomics {
-  border: 1px solid var(--color-gray-200);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: var(--spacing-16);
-}
-
-.productEconomics div {
-  border-right: 1px solid var(--color-gray-200);
-  min-width: 0;
-  padding: var(--spacing-12);
-}
-
-.productEconomics div:last-child {
-  border-right: 0;
+  max-width: 430px;
 }
 
 .checkout {
@@ -1023,8 +1005,7 @@ input[type="range"] {
   }
 
   .mathGrid,
-  .receiptRows,
-  .productEconomics {
+  .receiptRows {
     grid-template-columns: 1fr;
   }
 
@@ -1047,20 +1028,17 @@ input[type="range"] {
   }
 
   .mathGrid div,
-  .receiptRows div,
-  .productEconomics div {
+  .receiptRows div {
     border-right: 0;
   }
 
   .mathGrid div:nth-last-child(-n + 2),
-  .receiptRows div:nth-last-child(-n + 2),
-  .productEconomics div {
+  .receiptRows div:nth-last-child(-n + 2) {
     border-bottom: 1px solid var(--color-gray-200);
   }
 
   .mathGrid div:last-child,
-  .receiptRows div:last-child,
-  .productEconomics div:last-child {
+  .receiptRows div:last-child {
     border-bottom: 0;
   }
 

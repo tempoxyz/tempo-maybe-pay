@@ -14,6 +14,7 @@ import {
   quoteRedeemValue,
   tip20Abi,
   type ChainId,
+  type Product,
 } from '@tempo-maybe-pay/shared'
 import { ArrowLeft, ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
 import Link from 'next/link'
@@ -104,6 +105,53 @@ function formatCountdown(deadline: bigint, nowSeconds: number): string {
 
 type ShopProps = {
   checkoutProductId?: number
+}
+
+type NftProductCardProps = {
+  bankrupt?: boolean
+  onClick?: () => void
+  price: bigint
+  product: Product
+  redeemValue: bigint
+}
+
+function NftProductCard({ bankrupt = false, onClick, price, product, redeemValue }: NftProductCardProps) {
+  const content = (
+    <>
+      <img alt={product.name} src={product.image} />
+      <span className="productOverlay">
+        <strong>{product.name}</strong>
+        <em>{product.description}</em>
+        <span className="productMoney">
+          <span>{formatPathUsd(price)} pathUSD</span>
+          <span>{formatPathUsd(redeemValue)} pathUSD cash-out</span>
+        </span>
+        {bankrupt ? <span className="productAction">House bankrupt</span> : null}
+      </span>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button
+        className={`productCard ${bankrupt ? 'bankruptProduct' : ''}`}
+        onClick={onClick}
+        style={{ '--accent': product.accent } as CSSProperties}
+        type="button"
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className={`productCard productCardStatic ${bankrupt ? 'bankruptProduct' : ''}`}
+      style={{ '--accent': product.accent } as CSSProperties}
+    >
+      {content}
+    </div>
+  )
 }
 
 export function Shop({ checkoutProductId }: ShopProps = {}) {
@@ -207,18 +255,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
     },
   })
 
-  const inventoryQuery = useReadContract({
-    abi: maybePayStoreAbi,
-    address: deployment.store ?? zeroAddress,
-    args: [BigInt(product.id)],
-    chainId: selectedChainId,
-    functionName: 'productInventoryCount',
-    query: {
-      enabled: Boolean(deployment.store),
-      refetchInterval: 5_000,
-    },
-  })
-
   const tokenIdsQuery = useReadContract({
     abi: maybePayNftAbi,
     address: deployment.nft ?? zeroAddress,
@@ -265,7 +301,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const outstandingLiability =
     typeof outstandingLiabilityQuery.data === 'bigint' ? outstandingLiabilityQuery.data : 0n
   const pendingEscrow = typeof pendingEscrowQuery.data === 'bigint' ? pendingEscrowQuery.data : 0n
-  const inventoryCount = typeof inventoryQuery.data === 'bigint' ? inventoryQuery.data : 0n
   const canUnderwrite = !chainReady || availableReserve >= redeemValue
   const hasFunds = !address || balance >= maxEscrow
   const houseSolvent = !chainReady || availableReserve > 0n
@@ -319,7 +354,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       availableReserveQuery.refetch(),
       outstandingLiabilityQuery.refetch(),
       pendingEscrowQuery.refetch(),
-      inventoryQuery.refetch(),
       tokenIdsQuery.refetch(),
       ownedClaimsQuery.refetch(),
     ])
@@ -581,29 +615,12 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           </div>
           {isCheckoutPage ? (
             <div className="checkoutProduct">
-              <img alt={product.name} src={product.image} />
-              <div>
-                <span className="productCategory">{product.category}</span>
-                <p>{product.description}</p>
-                <div className="productEconomics">
-                  <div>
-                    <span>Cash-out value</span>
-                    <strong>{formatPathUsd(redeemValue)} pathUSD</strong>
-                  </div>
-                  <div>
-                    <span>Window</span>
-                    <strong>1 hour</strong>
-                  </div>
-                  <div>
-                    <span>Restocked</span>
-                    <strong>{inventoryCount.toString()}</strong>
-                  </div>
-                </div>
-                <div className="skuLine">
-                  <span>{product.sku}</span>
-                  <span>{product.category}</span>
-                </div>
-              </div>
+              <NftProductCard
+                bankrupt={chainReady && !canUnderwrite}
+                price={basePrice}
+                product={product}
+                redeemValue={redeemValue}
+              />
             </div>
           ) : (
             <div className="productGrid">
@@ -611,23 +628,15 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                 const itemBasePrice = getProductPrice(item, selectedChainId)
                 const itemRedeemValue = quoteRedeemValue(itemBasePrice)
                 const productSolvent = !chainReady || availableReserve >= itemRedeemValue
-
                 return (
-                  <button
-                    className={`productCard ${productSolvent ? '' : 'bankruptProduct'}`}
+                  <NftProductCard
+                    bankrupt={!productSolvent}
                     key={item.id}
                     onClick={() => router.push(`/checkout/${item.id}?chainId=${selectedChainId}`)}
-                    style={{ '--accent': item.accent } as CSSProperties}
-                    type="button"
-                  >
-                    <img alt={item.name} src={item.image} />
-                    <span className="productCategory">{item.category}</span>
-                    <strong>{item.name}</strong>
-                    <em>{item.tagline}</em>
-                    <span className="priceLine">{formatPathUsd(itemBasePrice)} pathUSD</span>
-                    <span className="redeemLine">{formatPathUsd(itemRedeemValue)} pathUSD cash-out</span>
-                    {!productSolvent ? <span className="productAction">House bankrupt</span> : null}
-                  </button>
+                    price={itemBasePrice}
+                    product={item}
+                    redeemValue={itemRedeemValue}
+                  />
                 )
               })}
             </div>
