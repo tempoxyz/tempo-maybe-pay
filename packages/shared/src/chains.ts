@@ -6,7 +6,6 @@ export type Deployment = {
   rpcUrl: string
   wsUrl: string
   explorerUrl: string
-  sponsorUrl?: string
   paymentToken: `0x${string}`
   store?: `0x${string}`
   nft?: `0x${string}`
@@ -21,12 +20,11 @@ export const chainDeployments = {
     rpcUrl: 'https://rpc.testnet.tempo.xyz',
     wsUrl: 'wss://rpc.moderato.tempo.xyz',
     explorerUrl: 'https://explore.testnet.tempo.xyz',
-    sponsorUrl: 'https://sponsor.moderato.tempo.xyz',
     paymentToken: '0x20c0000000000000000000000000000000000000',
-    store: '0x53e4b02Be21d629AFf3Cd6C8500913Bd48CAD8A1',
-    nft: '0x150ee51799ED8Eba69fcfB1Bb35Af7295ad9B86a',
-    merchant: '0xb83423C6063e24788a8990aA77638A41BA043541',
-    operator: '0xCdf374527991264A77073D83A6781eD6A121722B',
+    store: '0x8d4D5049c23a49CF1819867889ef1b0B049F118A',
+    nft: '0x8e02BA0dDE050d5101f18B0bCA7F82278D6483C9',
+    merchant: '0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4',
+    operator: '0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4',
   },
   4217: {
     chainId: 4217,

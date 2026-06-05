@@ -144,6 +144,7 @@ a {
 .iconButton,
 .selectLabel select,
 .primaryButton,
+.secondaryButton,
 .productCard,
 .linkStack a,
 .txLink,
@@ -176,7 +177,11 @@ a {
 .productCategory,
 .mathGrid span,
 .receiptRows span,
-.balanceLine span {
+.balanceLine span,
+.houseStats span,
+.bankrollPanel span,
+.productEconomics span,
+.claimCard span {
   color: var(--color-gray-600);
   font-size: 11px;
   font-weight: 600;
@@ -186,7 +191,8 @@ a {
 
 .selectLabel select,
 .iconButton,
-.primaryButton {
+.primaryButton,
+.secondaryButton {
   border: 1px solid var(--color-black);
 }
 
@@ -198,7 +204,8 @@ a {
 }
 
 .iconButton,
-.primaryButton {
+.primaryButton,
+.secondaryButton {
   align-items: center;
   background: var(--color-white);
   color: var(--color-black);
@@ -216,6 +223,7 @@ a {
 
 .iconButton:disabled,
 .primaryButton:disabled,
+.secondaryButton:disabled,
 .productCard:disabled,
 select:disabled {
   cursor: not-allowed;
@@ -268,6 +276,64 @@ h2 {
   border-top: 1px solid var(--color-gray-200);
   height: 0;
   margin-bottom: var(--spacing-48);
+}
+
+.houseDashboard {
+  border: 1px solid var(--color-black);
+  display: grid;
+  gap: var(--spacing-24);
+  grid-template-columns: minmax(0, 0.85fr) minmax(320px, 1.15fr);
+  margin-top: var(--spacing-24);
+}
+
+.houseDashboard.bankrupt {
+  background: #fff0ec;
+}
+
+.houseLead {
+  border-right: 1px solid var(--color-gray-200);
+  padding: var(--spacing-24);
+}
+
+.houseLead strong {
+  display: block;
+  font-family: var(--font-secondary);
+  font-size: clamp(36px, 5vw, 66px);
+  font-weight: 300;
+  line-height: 0.95;
+}
+
+.houseLead p {
+  color: var(--color-gray-700);
+  font-size: 15px;
+  line-height: 1.45;
+  margin: var(--spacing-16) 0 0;
+  max-width: 600px;
+}
+
+.houseStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.houseStats div {
+  border-right: 1px solid var(--color-gray-200);
+  min-width: 0;
+  padding: var(--spacing-24);
+}
+
+.houseStats div:last-child {
+  border-right: 0;
+}
+
+.houseStats strong,
+.productEconomics strong,
+.bankrollPanel strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 450;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .mathGrid span,
@@ -344,6 +410,10 @@ h2 {
   transform: translateY(-2px);
 }
 
+.productCard.bankruptProduct {
+  background: #fffaf7;
+}
+
 .productCard.selected {
   border-color: var(--color-black);
   box-shadow: inset 0 -4px 0 0 var(--color-black);
@@ -376,6 +446,13 @@ h2 {
   color: var(--color-black);
   font-family: var(--font-code);
   font-size: 13px;
+  font-weight: 500;
+}
+
+.redeemLine {
+  color: var(--color-gray-700);
+  font-family: var(--font-code);
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -421,6 +498,23 @@ h2 {
   margin: var(--spacing-12) 0 0;
 }
 
+.productEconomics {
+  border: 1px solid var(--color-gray-200);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: var(--spacing-16);
+}
+
+.productEconomics div {
+  border-right: 1px solid var(--color-gray-200);
+  min-width: 0;
+  padding: var(--spacing-12);
+}
+
+.productEconomics div:last-child {
+  border-right: 0;
+}
+
 .checkout {
   background: var(--color-white);
   border: 1px solid var(--color-black);
@@ -440,6 +534,28 @@ h2 {
   color: var(--color-gray-700);
   line-height: 1.5;
   margin: var(--spacing-12) 0 0;
+}
+
+.bankrollPanel {
+  border: 1px solid var(--color-gray-200);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bankrollPanel.bankrupt {
+  background: #fff0ec;
+  border-color: var(--color-danger);
+}
+
+.bankrollPanel div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: var(--spacing-12);
+}
+
+.bankrollPanel svg {
+  color: var(--color-gray-700);
 }
 
 .skuLine {
@@ -679,6 +795,25 @@ input[type="range"] {
   width: 100%;
 }
 
+.secondaryButton {
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--color-gray-100);
+}
+
+.dangerButton {
+  background: var(--color-black);
+  color: var(--color-white);
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: var(--color-gray-900);
+}
+
 .primaryButton:hover:not(:disabled) {
   background: var(--color-gray-900);
 }
@@ -763,6 +898,63 @@ input[type="range"] {
   margin-top: var(--spacing-12);
 }
 
+.redemptionPanel {
+  border-top: 1px solid var(--color-gray-200);
+  display: grid;
+  gap: var(--spacing-12);
+  padding-top: var(--spacing-24);
+}
+
+.redemptionHeader {
+  align-items: end;
+  display: flex;
+  gap: var(--spacing-12);
+  justify-content: space-between;
+}
+
+.redemptionHeader h3 {
+  font-family: var(--font-secondary);
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1;
+  margin: 0;
+}
+
+.redemptionHeader > span,
+.collectibleLine {
+  color: var(--color-gray-600);
+  font-size: 13px;
+}
+
+.claimList {
+  display: grid;
+  gap: var(--spacing-8);
+}
+
+.claimCard {
+  align-items: center;
+  border: 1px solid var(--color-gray-200);
+  display: grid;
+  gap: var(--spacing-12);
+  grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
+  padding: var(--spacing-12);
+}
+
+.claimCard strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.activeClaim {
+  background: #eef6f3;
+}
+
+.expiredClaim {
+  background: #fffaf7;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -780,6 +972,15 @@ input[type="range"] {
 
   .checkoutLayout {
     grid-template-columns: minmax(0, 1fr) 420px;
+  }
+
+  .houseDashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .houseLead {
+    border-bottom: 1px solid var(--color-gray-200);
+    border-right: 0;
   }
 
   .productGrid {
@@ -803,6 +1004,22 @@ input[type="range"] {
   .hero,
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .houseStats,
+  .bankrollPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .houseStats div,
+  .bankrollPanel div {
+    border-bottom: 1px solid var(--color-gray-200);
+    border-right: 0;
+  }
+
+  .houseStats div:last-child,
+  .bankrollPanel div:last-child {
+    border-bottom: 0;
   }
 
   .hero {
@@ -837,7 +1054,8 @@ input[type="range"] {
   }
 
   .mathGrid,
-  .receiptRows {
+  .receiptRows,
+  .productEconomics {
     grid-template-columns: 1fr;
   }
 
@@ -860,18 +1078,25 @@ input[type="range"] {
   }
 
   .mathGrid div,
-  .receiptRows div {
+  .receiptRows div,
+  .productEconomics div {
     border-right: 0;
   }
 
   .mathGrid div:nth-last-child(-n + 2),
-  .receiptRows div:nth-last-child(-n + 2) {
+  .receiptRows div:nth-last-child(-n + 2),
+  .productEconomics div {
     border-bottom: 1px solid var(--color-gray-200);
   }
 
   .mathGrid div:last-child,
-  .receiptRows div:last-child {
+  .receiptRows div:last-child,
+  .productEconomics div:last-child {
     border-bottom: 0;
+  }
+
+  .claimCard {
+    grid-template-columns: 1fr;
   }
 
   .controls,

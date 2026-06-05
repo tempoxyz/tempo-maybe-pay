@@ -21,6 +21,8 @@ contract TempoMaybePayNFT is Owned {
     mapping(address owner => mapping(address operator => bool approved)) public isApprovedForAll;
     mapping(uint256 tokenId => uint256 productId) public tokenProduct;
     mapping(uint256 tokenId => string uri) private tokenUris;
+    mapping(address owner => uint256[] tokenIds) private ownedTokens;
+    mapping(uint256 tokenId => uint256 index) private ownedTokenIndex;
 
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
     event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
@@ -49,9 +51,14 @@ contract TempoMaybePayNFT is Owned {
         tokenId = nextTokenId++;
         ownerOf[tokenId] = to;
         balanceOf[to] += 1;
+        _addOwnedToken(to, tokenId);
         tokenProduct[tokenId] = productId;
         tokenUris[tokenId] = uri;
         emit Transfer(address(0), to, tokenId);
+    }
+
+    function tokensOfOwner(address owner) external view returns (uint256[] memory) {
+        return ownedTokens[owner];
     }
 
     function tokenURI(uint256 tokenId) external view returns (string memory) {
@@ -104,10 +111,30 @@ contract TempoMaybePayNFT is Owned {
         if (ownerOf[tokenId] != from) revert InvalidToken();
 
         delete getApproved[tokenId];
+        _removeOwnedToken(from, tokenId);
+        _addOwnedToken(to, tokenId);
         balanceOf[from] -= 1;
         balanceOf[to] += 1;
         ownerOf[tokenId] = to;
         emit Transfer(from, to, tokenId);
     }
-}
 
+    function _addOwnedToken(address to, uint256 tokenId) private {
+        ownedTokenIndex[tokenId] = ownedTokens[to].length;
+        ownedTokens[to].push(tokenId);
+    }
+
+    function _removeOwnedToken(address from, uint256 tokenId) private {
+        uint256 lastIndex = ownedTokens[from].length - 1;
+        uint256 tokenIndex = ownedTokenIndex[tokenId];
+
+        if (tokenIndex != lastIndex) {
+            uint256 lastTokenId = ownedTokens[from][lastIndex];
+            ownedTokens[from][tokenIndex] = lastTokenId;
+            ownedTokenIndex[lastTokenId] = tokenIndex;
+        }
+
+        ownedTokens[from].pop();
+        delete ownedTokenIndex[tokenId];
+    }
+}
