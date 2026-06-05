@@ -435,8 +435,9 @@ h2 {
   background: var(--color-gray-100);
   border: 1px solid var(--color-gray-200);
   display: block;
-  height: clamp(88px, 9vw, 120px);
-  object-fit: contain;
+  height: clamp(138px, 14vw, 172px);
+  object-fit: cover;
+  object-position: center;
   width: 100%;
 }
 
@@ -479,11 +480,6 @@ h2 {
   margin-top: 4px;
   padding-top: var(--spacing-8);
   text-transform: uppercase;
-}
-
-.productAction::after {
-  content: "->";
-  font-family: var(--font-code);
 }
 
 .checkoutProduct {

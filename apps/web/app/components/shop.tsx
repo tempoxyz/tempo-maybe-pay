@@ -626,7 +626,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                     <em>{item.tagline}</em>
                     <span className="priceLine">{formatPathUsd(itemBasePrice)} pathUSD</span>
                     <span className="redeemLine">{formatPathUsd(itemRedeemValue)} pathUSD cash-out</span>
-                    <span className="productAction">{productSolvent ? 'Checkout' : 'House bankrupt'}</span>
+                    {!productSolvent ? <span className="productAction">House bankrupt</span> : null}
                   </button>
                 )
               })}
