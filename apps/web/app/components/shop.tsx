@@ -533,17 +533,29 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           Tempo Maybe Pay
         </Link>
         <div className="controls">
-          <label className="selectLabel">
+          <div className="networkSwitch">
             <span>Network</span>
-            <select
-              value={selectedChainId}
-              onChange={(event) => changeNetwork(Number(event.target.value) as ChainId)}
-              disabled={busy}
-            >
-              <option value={42431}>Tempo testnet</option>
-              <option value={4217}>Tempo mainnet</option>
-            </select>
-          </label>
+            <div className="networkOptions" role="group" aria-label="Network">
+              <button
+                aria-pressed={selectedChainId === 42431}
+                className="networkButton"
+                disabled={busy}
+                onClick={() => changeNetwork(42431)}
+                type="button"
+              >
+                Testnet
+              </button>
+              <button
+                aria-pressed={selectedChainId === 4217}
+                className="networkButton"
+                disabled={busy}
+                onClick={() => changeNetwork(4217)}
+                type="button"
+              >
+                Mainnet
+              </button>
+            </div>
+          </div>
           {isConnected && address ? (
             <button className="iconButton" type="button" onClick={() => disconnect()} disabled={busy}>
               <Wallet size={17} />

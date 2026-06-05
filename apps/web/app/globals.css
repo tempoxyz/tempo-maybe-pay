@@ -144,6 +144,7 @@ a {
 
 .iconButton,
 .selectLabel select,
+.networkButton,
 .primaryButton,
 .secondaryButton,
 .productCard,
@@ -172,7 +173,19 @@ a {
   gap: var(--spacing-8);
 }
 
+.networkSwitch {
+  align-items: center;
+  display: flex;
+  gap: var(--spacing-8);
+}
+
+.networkOptions {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(78px, 1fr));
+}
+
 .selectLabel span,
+.networkSwitch span,
 .eyebrow,
 .mathGrid span,
 .receiptRows span,
@@ -187,6 +200,7 @@ a {
 }
 
 .selectLabel select,
+.networkButton,
 .iconButton,
 .primaryButton,
 .secondaryButton {
@@ -201,6 +215,7 @@ a {
 }
 
 .iconButton,
+.networkButton,
 .primaryButton,
 .secondaryButton {
   align-items: center;
@@ -213,12 +228,32 @@ a {
   padding: 0 12px;
 }
 
+.networkButton {
+  justify-content: center;
+  min-width: 78px;
+}
+
+.networkButton + .networkButton {
+  border-left: 0;
+}
+
+.networkButton[aria-pressed='true'] {
+  background: var(--color-black);
+  color: var(--color-white);
+}
+
 .iconButton:hover,
-.selectLabel select:hover {
+.selectLabel select:hover,
+.networkButton:hover:not(:disabled) {
   background: var(--color-gray-100);
 }
 
+.networkButton[aria-pressed='true']:hover:not(:disabled) {
+  background: var(--color-black);
+}
+
 .iconButton:disabled,
+.networkButton:disabled,
 .primaryButton:disabled,
 .secondaryButton:disabled,
 .productCard:disabled,
@@ -1060,13 +1095,19 @@ input[type="range"] {
 
   .controls,
   .connectors,
-  .selectLabel {
+  .selectLabel,
+  .networkSwitch {
     align-items: stretch;
     display: grid;
     width: 100%;
   }
 
+  .networkOptions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .iconButton,
+  .networkButton,
   .selectLabel select {
     justify-content: center;
     width: 100%;
