@@ -56,11 +56,17 @@ echo "Operator: $OPERATOR"
 echo "Merchant: $MERCHANT"
 echo "House bankroll seed: $HOUSE_BANKROLL_AMOUNT pathUSD base units"
 
-NFT_JSON="$(deploy_contract src/TempoMaybePayNFT.sol:TempoMaybePayNFT --constructor-args "Tempo Maybe Pay" "TMP" "$DEPLOYER")"
+NFT_JSON="$(
+  deploy_contract src/TempoMaybePayNFTV2.sol:TempoMaybePayNFTV2 \
+    --constructor-args "Tempo Maybe Pay" "TMP" "$METADATA_BASE_URL/api/metadata/$CHAIN_ID/" "$DEPLOYER"
+)"
 NFT_ADDRESS="$(printf '%s' "$NFT_JSON" | jq -r '.deployedTo')"
 echo "NFT: $NFT_ADDRESS"
 
-STORE_JSON="$(deploy_contract src/TempoMaybePayStore.sol:TempoMaybePayStore --constructor-args "$FEE_TOKEN" "$NFT_ADDRESS" "$MERCHANT" "$DEPLOYER")"
+STORE_JSON="$(
+  deploy_contract src/TempoMaybePayStoreV2.sol:TempoMaybePayStoreV2 \
+    --constructor-args "$FEE_TOKEN" "$NFT_ADDRESS" "$MERCHANT" "$DEPLOYER"
+)"
 STORE_ADDRESS="$(printf '%s' "$STORE_JSON" | jq -r '.deployedTo')"
 echo "Store: $STORE_ADDRESS"
 
@@ -83,8 +89,8 @@ fi
 
 for product in "${PRODUCTS[@]}"; do
   IFS="|" read -r id name price max_supply <<<"$product"
-  send_tx "$STORE_ADDRESS" "setProduct(uint256,string,uint256,uint256,bool,string)" \
-    "$id" "$name" "$price" "$max_supply" true "$METADATA_BASE_URL/api/metadata/$CHAIN_ID/$id"
+  echo "Configuring product $id: $name"
+  send_tx "$STORE_ADDRESS" "setProduct(uint256,uint256,uint256,bool)" "$id" "$price" "$max_supply" true
 done
 
 if [[ "$HOUSE_BANKROLL_AMOUNT" != "0" ]]; then
@@ -93,6 +99,7 @@ fi
 
 cat > "$OUT_FILE" <<JSON
 {
+  "version": 2,
   "chainId": $CHAIN_ID,
   "rpcUrl": "$RPC_URL",
   "paymentToken": "$FEE_TOKEN",

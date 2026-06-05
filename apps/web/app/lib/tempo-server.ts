@@ -1,21 +1,52 @@
 import {
   getDeployment,
+  tip20Abi,
   maybePayNftAbi,
   maybePayStoreAbi,
   normalizeChainId,
   type ChainId,
   type Deployment,
 } from '@tempo-maybe-pay/shared'
-import { createClient, encodeAbiParameters, encodeFunctionData, http, keccak256, publicActions, walletActions, type Hex } from 'viem'
+import {
+  createClient,
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeFunctionData,
+  getAddress,
+  http,
+  isAddress,
+  isHex,
+  keccak256,
+  publicActions,
+  walletActions,
+  type Hex,
+} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { tempo, tempoModerato } from 'viem/chains'
 import { tempoActions } from 'viem/tempo'
 
-const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000'
-
-type EpochTuple = readonly [Hex, bigint, bigint, Hex, boolean]
-type OrderTuple = readonly [Hex, bigint, bigint, bigint, bigint, number, Hex, number, bigint, bigint]
+type EpochTuple = readonly [Hex, bigint, bigint, boolean]
 type RedemptionTuple = readonly [bigint, bigint, boolean]
+type TempoRpcCall = {
+  to?: Hex
+  input?: Hex
+  data?: Hex | null
+}
+type TempoRpcTransaction = {
+  from?: Hex
+  to?: Hex | null
+  input?: Hex
+  data?: Hex | null
+  calls?: readonly TempoRpcCall[]
+}
+type TempoRpcReceipt = {
+  status?: Hex
+}
+
+function sameAddress(left: string, right: string): boolean {
+  if (!isAddress(left) || !isAddress(right)) return false
+  return getAddress(left) === getAddress(right)
+}
 
 function getOperatorPrivateKey(): Hex {
   const key = process.env.MAYBEPAY_PROCESSOR_PRIVATE_KEY ?? process.env.OPERATOR_PRIVATE_KEY
@@ -63,6 +94,72 @@ export function getTempoClient(chainIdInput: string | number | null | undefined)
     .extend(tempoActions())
 }
 
+export async function verifyEscrowPayment({
+  buyer,
+  chainId,
+  maxEscrow,
+  orderId,
+  paymentTransactionHash,
+}: {
+  buyer: Hex
+  chainId: ChainId
+  maxEscrow: bigint
+  orderId: Hex
+  paymentTransactionHash: Hex
+}) {
+  const deployment = getServerDeployment(chainId)
+  if (!deployment.store) throw new Error('Store is not deployed')
+  if (!isHex(paymentTransactionHash, { strict: true }) || paymentTransactionHash.length !== 66) {
+    throw new Error('Invalid payment transaction hash')
+  }
+
+  const client = getTempoClient(chainId)
+  const [transaction, receipt] = await Promise.all([
+    client.request({
+      method: 'eth_getTransactionByHash',
+      params: [paymentTransactionHash],
+    }) as Promise<TempoRpcTransaction | null>,
+    client.request({
+      method: 'eth_getTransactionReceipt',
+      params: [paymentTransactionHash],
+    }) as Promise<TempoRpcReceipt | null>,
+  ])
+
+  if (!transaction || !receipt) throw new Error('Payment transaction was not found')
+  if (receipt.status !== '0x1') throw new Error('Payment transaction did not succeed')
+  if (!transaction.from || !sameAddress(transaction.from, buyer)) {
+    throw new Error('Payment transaction was not sent by the buyer wallet')
+  }
+
+  const calls =
+    transaction.calls && transaction.calls.length > 0
+      ? transaction.calls
+      : [{ to: transaction.to ?? undefined, input: transaction.input ?? transaction.data ?? undefined }]
+
+  for (const call of calls) {
+    const data = call.input ?? call.data ?? undefined
+    if (!call.to || !data || !sameAddress(call.to, deployment.paymentToken)) continue
+
+    try {
+      const decoded = decodeFunctionData({ abi: tip20Abi, data })
+      if (decoded.functionName !== 'transferWithMemo') continue
+
+      const [to, amount, memo] = decoded.args
+      if (
+        sameAddress(to, deployment.store) &&
+        amount === maxEscrow &&
+        String(memo).toLowerCase() === orderId.toLowerCase()
+      ) {
+        return
+      }
+    } catch {
+      continue
+    }
+  }
+
+  throw new Error('Payment transaction did not escrow the expected pathUSD with the order memo')
+}
+
 export function deriveEpochSeed(deployment: Deployment, epochId: bigint): Hex {
   if (!deployment.store) throw new Error('Store is not deployed')
   return keccak256(
@@ -101,8 +198,8 @@ export async function ensureEpoch(chainIdInput: string | number | null | undefin
       args: [currentEpochId],
       functionName: 'epochs',
     })) as EpochTuple
-    const [, , revealDeadline, orderId, revealed] = epoch
-    const hasOpenSlot = orderId === zeroBytes32 && !revealed && Number(revealDeadline) > Math.floor(Date.now() / 1000) + 60
+    const [, , revealDeadline, revealed] = epoch
+    const hasOpenSlot = !revealed && Number(revealDeadline) > Math.floor(Date.now() / 1000) + 60
     if (hasOpenSlot) {
       return { epochId: currentEpochId.toString(), opened: false }
     }
@@ -130,31 +227,31 @@ export async function ensureEpoch(chainIdInput: string | number | null | undefin
   }
 }
 
-export async function readOrder(chainIdInput: string | number | null | undefined, orderId: Hex) {
+export async function readCurrentEpochId(chainIdInput: string | number | null | undefined) {
   const deployment = getServerDeployment(chainIdInput)
   const client = getTempoClient(deployment.chainId)
   const store = deployment.store
   if (!store) throw new Error('Store is not deployed')
 
-  const order = (await client.readContract({
+  return client.readContract({
+    abi: maybePayStoreAbi,
+    address: store,
+    functionName: 'currentEpochId',
+  }) as Promise<bigint>
+}
+
+export async function readProcessedOrder(chainIdInput: string | number | null | undefined, orderId: Hex) {
+  const deployment = getServerDeployment(chainIdInput)
+  const client = getTempoClient(deployment.chainId)
+  const store = deployment.store
+  if (!store) throw new Error('Store is not deployed')
+
+  return client.readContract({
     abi: maybePayStoreAbi,
     address: store,
     args: [orderId],
-    functionName: 'orders',
-  })) as OrderTuple
-
-  return {
-    buyer: order[0],
-    productId: order[1],
-    epochId: order[2],
-    basePrice: order[3],
-    maxEscrow: order[4],
-    payProbabilityBps: order[5],
-    metadataHash: order[6],
-    status: order[7],
-    roll: order[8],
-    tokenId: order[9],
-  }
+    functionName: 'processedOrders',
+  }) as Promise<boolean>
 }
 
 export async function readEpoch(chainIdInput: string | number | null | undefined, epochId: bigint) {
@@ -174,8 +271,8 @@ export async function readEpoch(chainIdInput: string | number | null | undefined
     commitment: epoch[0],
     openedAt: epoch[1],
     revealDeadline: epoch[2],
-    orderId: epoch[3],
-    revealed: epoch[4],
+    orderId: '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex,
+    revealed: epoch[3],
   }
 }
 
@@ -256,12 +353,4 @@ export async function readHouseStats(chainIdInput: string | number | null | unde
     outstandingLiability,
     pendingEscrow,
   }
-}
-
-export function orderStatusName(status: number): 'none' | 'pending' | 'paid' | 'free' | 'refunded' {
-  if (status === 1) return 'pending'
-  if (status === 2) return 'paid'
-  if (status === 3) return 'free'
-  if (status === 4) return 'refunded'
-  return 'none'
 }

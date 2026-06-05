@@ -20,7 +20,7 @@ import { ArrowLeft, ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Fl
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { encodeFunctionData, keccak256, stringToHex, zeroAddress, type Hex } from 'viem'
+import { encodeFunctionData, zeroAddress, type Hex } from 'viem'
 import {
   useAccount,
   useChainId,
@@ -50,6 +50,7 @@ type ProcessResult = {
   orderId: Hex
   paidAmount: string
   payProbabilityBps: number
+  paymentTransactionHash?: Hex
   processTransactionHash?: Hex
   productId: string
   refundedAmount: string
@@ -60,6 +61,12 @@ type ProcessResult = {
   seed: Hex
   status: 'paid' | 'free'
   threshold: string
+  tokenId: string
+}
+
+type RedeemResult = {
+  owner: Hex
+  redemptionTransactionHash: Hex
   tokenId: string
 }
 
@@ -396,44 +403,33 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       if (!epochResponse.ok) throw new Error(await epochResponse.text())
 
       const orderId = randomOrderId()
-      const metadataHash = keccak256(
-        stringToHex(
-          JSON.stringify({
-            buyer: address,
-            basePrice: basePrice.toString(),
-            chainId: selectedChainId,
-            orderId,
-            payProbabilityBps,
-            productId: product.id,
-          }),
-        ),
-      )
-
-      const approveData = encodeFunctionData({
+      const escrowData = encodeFunctionData({
         abi: tip20Abi,
-        args: [deployment.store, maxEscrow],
-        functionName: 'approve',
-      })
-      const placeOrderData = encodeFunctionData({
-        abi: maybePayStoreAbi,
-        args: [orderId, BigInt(product.id), payProbabilityBps, metadataHash],
-        functionName: 'placeOrder',
+        args: [deployment.store, maxEscrow, orderId],
+        functionName: 'transferWithMemo',
       })
 
       setStage('placing')
       const receipt = await sendTransactionSync.mutateAsync({
-        calls: [
-          { data: approveData, to: deployment.paymentToken },
-          { data: placeOrderData, to: deployment.store },
-        ],
+        calls: [{ data: escrowData, to: deployment.paymentToken }],
         chainId: selectedChainId,
-        feeToken: deployment.paymentToken,
       })
       const hash = receipt.transactionHash ?? receipt.hash
+      if (!hash) throw new Error('Wallet did not return a payment transaction hash')
       setPlaceTransactionHash(hash)
 
       setStage('processing')
       const processResponse = await fetch(`/api/orders/${orderId}/process?chainId=${selectedChainId}`, {
+        body: JSON.stringify({
+          buyer: address,
+          maxEscrow: maxEscrow.toString(),
+          payProbabilityBps,
+          paymentTransactionHash: hash,
+          productId: product.id,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
         method: 'POST',
       })
       if (!processResponse.ok) throw new Error(await processResponse.text())
@@ -461,26 +457,16 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         await switchChainAsync({ chainId: selectedChainId })
       }
 
-      const approveData = encodeFunctionData({
-        abi: maybePayNftAbi,
-        args: [deployment.store, tokenId],
-        functionName: 'approve',
+      const redeemResponse = await fetch(`/api/tokens/${tokenId.toString()}/redeem?chainId=${selectedChainId}`, {
+        body: JSON.stringify({ owner: address }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
       })
-      const redeemData = encodeFunctionData({
-        abi: maybePayStoreAbi,
-        args: [tokenId],
-        functionName: 'redeem',
-      })
-      const receipt = await sendTransactionSync.mutateAsync({
-        calls: [
-          { data: approveData, to: deployment.nft },
-          { data: redeemData, to: deployment.store },
-        ],
-        chainId: selectedChainId,
-        feeToken: deployment.paymentToken,
-      })
-      const hash = receipt.transactionHash ?? receipt.hash
-      setRedemptionTransactionHash(hash)
+      if (!redeemResponse.ok) throw new Error(await redeemResponse.text())
+      const redeemed = (await redeemResponse.json()) as RedeemResult
+      setRedemptionTransactionHash(redeemed.redemptionTransactionHash)
       setResult((current) =>
         current?.tokenId === tokenId.toString() ? { ...current, redeemActive: false } : current,
       )
