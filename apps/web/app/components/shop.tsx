@@ -549,10 +549,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </div>
             <div className="houseStats">
               <div>
-                <span>Available reserve</span>
-                <strong>{chainReady ? `${formatPathUsd(availableReserve)} pathUSD` : '-'}</strong>
-              </div>
-              <div>
                 <span>Live NFT claims</span>
                 <strong>{chainReady ? `${formatPathUsd(outstandingLiability)} pathUSD` : '-'}</strong>
               </div>
