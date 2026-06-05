@@ -659,8 +659,8 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           <div className={`bankrollPanel ${canUnderwrite ? '' : 'bankrupt'}`}>
             <div>
               <Banknote size={18} />
-              <span>House available</span>
-              <strong>{chainReady ? `${formatPathUsd(availableReserve)} pathUSD` : '-'}</strong>
+              <span>NFT cost</span>
+              <strong>{formatPathUsd(basePrice)} pathUSD</strong>
             </div>
             <div>
               <Flame size={18} />
