@@ -110,6 +110,12 @@ function formatCountdown(deadline: bigint, nowSeconds: number): string {
   return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
 }
 
+const accessKeyTtlSeconds = 30 * 24 * 60 * 60
+
+function accessKeyExpiry(): number {
+  return Math.floor(Date.now() / 1000) + accessKeyTtlSeconds
+}
+
 type ShopProps = {
   checkoutProductId?: number
 }
@@ -205,6 +211,17 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const freeRollRange = freeProbabilityBps === 0 ? 'none' : `${payProbabilityBps}-9999`
   const chainReady = Boolean(deployment.store && deployment.nft)
   const connectedToSelectedChain = chainId === selectedChainId
+  const connectWithAccessKey = (connector: (typeof connectors)[number]) =>
+    connectAsync({
+      capabilities: {
+        authorizeAccessKey: {
+          chainId: BigInt(selectedChainId),
+          expiry: accessKeyExpiry(),
+        },
+      },
+      chainId: selectedChainId,
+      connector,
+    })
 
   const balanceQuery = useReadContract({
     abi: tip20Abi,
@@ -578,7 +595,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   disabled={isConnecting}
                   key={connector.uid}
                   type="button"
-                  onClick={() => void connectAsync({ connector })}
+                  onClick={() => void connectWithAccessKey(connector)}
                 >
                   <Wallet size={17} />
                   {connector.name}
