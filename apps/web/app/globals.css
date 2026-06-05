@@ -412,11 +412,10 @@ h2 {
   border: 1px solid var(--color-gray-200);
   color: var(--color-black);
   cursor: pointer;
-  display: block;
-  min-height: 0;
-  overflow: hidden;
-  padding: 0;
-  position: relative;
+  display: grid;
+  gap: var(--spacing-8);
+  min-height: 100%;
+  padding: var(--spacing-12);
   scroll-snap-align: start;
   text-align: left;
 }
@@ -447,30 +446,25 @@ h2 {
 .productCard img {
   background: var(--color-gray-100);
   display: block;
-  height: auto;
+  height: clamp(190px, 22vw, 270px);
+  margin: 0 auto;
+  max-width: 100%;
   object-fit: contain;
-  width: 100%;
+  width: auto;
 }
 
-.productOverlay {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--color-gray-200);
-  bottom: var(--spacing-12);
+.productDetails {
   display: grid;
   gap: 4px;
-  left: var(--spacing-12);
-  padding: var(--spacing-8);
-  position: absolute;
-  right: var(--spacing-12);
 }
 
-.productOverlay strong {
+.productDetails strong {
   font-size: 15px;
   font-weight: 450;
   line-height: 1.12;
 }
 
-.productOverlay em {
+.productDetails em {
   color: var(--color-gray-700);
   font-size: 11px;
   font-style: normal;

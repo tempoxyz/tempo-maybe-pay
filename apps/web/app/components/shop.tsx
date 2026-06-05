@@ -119,7 +119,7 @@ function NftProductCard({ bankrupt = false, onClick, price, product, redeemValue
   const content = (
     <>
       <img alt={product.name} src={product.image} />
-      <span className="productOverlay">
+      <span className="productDetails">
         <strong>{product.name}</strong>
         <em>{product.description}</em>
         <span className="productMoney">
