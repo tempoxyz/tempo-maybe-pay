@@ -572,7 +572,8 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </div>
             <p>
               Pick a product, choose your variance, and race the 1-hour cash-out window. Every NFT can be
-              redeemed for 99% of its price while the house bankroll lasts. Try to bankrupt the house!
+              redeemed for 99% of its price while the house bankroll lasts.{' '}
+              <span className="heroChallenge">Try to bankrupt the house!</span>
             </p>
           </section>
 
