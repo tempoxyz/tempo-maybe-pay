@@ -501,7 +501,16 @@ h2 {
 }
 
 .checkoutProduct {
-  max-width: 430px;
+  max-width: none;
+}
+
+.checkoutProduct .productCard {
+  align-items: end;
+  grid-template-columns: minmax(300px, 1fr) minmax(180px, 0.48fr);
+}
+
+.checkoutProduct .productCard img {
+  height: clamp(310px, 32vw, 430px);
 }
 
 .checkout {
