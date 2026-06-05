@@ -505,12 +505,12 @@ h2 {
 }
 
 .checkoutProduct .productCard {
-  align-items: end;
-  grid-template-columns: minmax(300px, 1fr) minmax(180px, 0.48fr);
+  gap: var(--spacing-8);
 }
 
 .checkoutProduct .productCard img {
-  height: clamp(310px, 32vw, 430px);
+  height: auto;
+  width: min(100%, 520px);
 }
 
 .checkout {
