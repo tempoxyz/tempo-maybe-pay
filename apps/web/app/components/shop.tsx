@@ -546,10 +546,6 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             <div className="houseLead">
               <span className="eyebrow">House bankroll</span>
               <strong>{chainReady ? `${formatPathUsd(houseBankroll)} pathUSD` : 'Not deployed'}</strong>
-              <p>
-                Paid orders refill the house. Free orders mint redeemable claims. Active NFTs can cash out for{' '}
-                {formatBps(9_900)} for 1 hour.
-              </p>
             </div>
             <div className="houseStats">
               <div>
