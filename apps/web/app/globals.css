@@ -127,18 +127,18 @@ a {
 
 .logoLink {
   align-items: center;
+  color: var(--color-black);
   display: inline-flex;
+  font-size: 22px;
+  font-weight: 600;
+  justify-self: start;
+  line-height: 1;
+  max-width: 100%;
   min-height: 40px;
   min-width: 0;
-}
-
-.logoLink img {
-  display: block;
-  height: 36px;
-  max-width: min(340px, 100%);
-  object-fit: contain;
-  object-position: left center;
-  width: auto;
+  text-decoration: none;
+  text-transform: uppercase;
+  width: fit-content;
 }
 
 .iconButton,
@@ -1033,12 +1033,8 @@ input[type="range"] {
 
 @media (max-width: 600px) {
   .logoLink {
+    font-size: 18px;
     min-height: 36px;
-  }
-
-  .logoLink img {
-    height: 30px;
-    max-width: min(300px, 100%);
   }
 
   h1 {

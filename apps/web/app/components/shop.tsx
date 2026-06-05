@@ -6,6 +6,7 @@ import {
   explorerTxUrl,
   formatPathUsd,
   getDeployment,
+  getProductPrice,
   maybePayNftAbi,
   maybePayStoreAbi,
   normalizeChainId,
@@ -16,6 +17,7 @@ import {
   type ChainId,
 } from '@tempo-maybe-pay/shared'
 import { ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { encodeFunctionData, keccak256, stringToHex, zeroAddress, type Hex } from 'viem'
@@ -135,12 +137,13 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
 
   const isCheckoutPage = checkoutProductId !== undefined
   const product = products.find((item) => item.id === (checkoutProductId ?? products[0].id)) ?? products[0]
+  const basePrice = getProductPrice(product, selectedChainId)
   const maxEscrow = useMemo(
-    () => quoteMaxEscrow(product.basePrice, payProbabilityBps),
-    [payProbabilityBps, product.basePrice],
+    () => quoteMaxEscrow(basePrice, payProbabilityBps),
+    [basePrice, payProbabilityBps],
   )
-  const redeemValue = quoteRedeemValue(product.basePrice)
-  const multiplier = Number((maxEscrow * 100n) / product.basePrice) / 100
+  const redeemValue = quoteRedeemValue(basePrice)
+  const multiplier = Number((maxEscrow * 100n) / basePrice) / 100
   const paidRollRange = `0-${payProbabilityBps - 1}`
   const freeRollRange = payProbabilityBps === 10_000 ? 'none' : `${payProbabilityBps}-9999`
   const chainReady = Boolean(deployment.store && deployment.nft)
@@ -359,6 +362,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         stringToHex(
           JSON.stringify({
             buyer: address,
+            basePrice: basePrice.toString(),
             chainId: selectedChainId,
             orderId,
             payProbabilityBps,
@@ -487,9 +491,9 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   return (
     <main className="shell">
       <header className="siteHeader">
-        <div className="logoLink">
-          <img alt="Tempo Maybe Pay" src="/brand/tempo-maybe-pay-logo-black.png" />
-        </div>
+        <Link className="logoLink" href={`/?chainId=${selectedChainId}`}>
+          Tempo Maybe Pay
+        </Link>
         <div className="controls">
           <label className="selectLabel">
             <span>Network</span>
@@ -573,7 +577,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             <div>
               <h2>{isCheckoutPage ? product.name : 'Choose an item'}</h2>
             </div>
-            <span>{isCheckoutPage ? `${formatPathUsd(product.basePrice)} pathUSD` : `${products.length} items available`}</span>
+            <span>{isCheckoutPage ? `${formatPathUsd(basePrice)} pathUSD` : `${products.length} items available`}</span>
           </div>
           {isCheckoutPage ? (
             <div className="checkoutProduct">
@@ -604,7 +608,8 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           ) : (
             <div className="productGrid">
               {products.map((item) => {
-                const itemRedeemValue = quoteRedeemValue(item.basePrice)
+                const itemBasePrice = getProductPrice(item, selectedChainId)
+                const itemRedeemValue = quoteRedeemValue(itemBasePrice)
                 const productSolvent = !chainReady || availableReserve >= itemRedeemValue
 
                 return (
@@ -619,7 +624,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                     <span className="productCategory">{item.category}</span>
                     <strong>{item.name}</strong>
                     <em>{item.tagline}</em>
-                    <span className="priceLine">{formatPathUsd(item.basePrice)} pathUSD</span>
+                    <span className="priceLine">{formatPathUsd(itemBasePrice)} pathUSD</span>
                     <span className="redeemLine">{formatPathUsd(itemRedeemValue)} pathUSD cash-out</span>
                     <span className="productAction">{productSolvent ? 'Checkout' : 'House bankrupt'}</span>
                   </button>
@@ -707,7 +712,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
               </div>
               <div>
                 <span>Expected payment</span>
-                <strong>{formatPathUsd(product.basePrice)} pathUSD</strong>
+                <strong>{formatPathUsd(basePrice)} pathUSD</strong>
               </div>
               <div>
                 <span>NFT cash-out</span>
@@ -719,7 +724,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
               </div>
               <div>
                 <span>House EV</span>
-                <strong>{formatPathUsd(product.basePrice - redeemValue)} pathUSD</strong>
+                <strong>{formatPathUsd(basePrice - redeemValue)} pathUSD</strong>
               </div>
             </div>
           </div>

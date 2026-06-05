@@ -25,8 +25,8 @@ Copy `.env.example` or `apps/web/.env.example` to a local `.env.local` after con
 
 ## Tempo testnet deployment
 
-- Store: `0x8d4D5049c23a49CF1819867889ef1b0B049F118A`
-- Item token: `0x8e02BA0dDE050d5101f18B0bCA7F82278D6483C9`
+- Store: `0x9DDC661dFE977bf20055F67879C9bC4383F7babf`
+- Item token: `0xe05C61B0cBe2e042902A7EF2C26dCE201f27cf86`
 - Payment token: `0x20c0000000000000000000000000000000000000`
 - Operator: `0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4`
 - Initial house bankroll: `500 pathUSD`
@@ -35,7 +35,13 @@ Deployment artifact: `packages/contracts/deployments/42431.json`.
 
 Mainnet is configured in code but not deployed yet.
 
-The testnet catalog has ten merchant items: Tempo Hoodie, Ceramic Mug, Desk Mat, Canvas Tote, Notebook Pack, Stainless Bottle, Mechanical Keyboard, Desk Lamp, Gift Card, and Sticker Sheet.
+The catalog has three Tempo tier NFTs:
+
+- Tempo Flight Pass, pictured with `:money-with-wings:`
+- Tempo Dollar Lane, pictured with `:dollar:`
+- Tempo Treasury Bag, pictured with `:moneybag:`
+
+Testnet prices are `1`, `10`, and `100` pathUSD. Mainnet prices are `0.001`, `0.01`, and `0.1` pathUSD.
 
 ## Live app
 

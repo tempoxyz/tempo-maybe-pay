@@ -67,18 +67,19 @@ echo "Store: $STORE_ADDRESS"
 send_tx "$NFT_ADDRESS" "setStore(address)" "$STORE_ADDRESS"
 send_tx "$STORE_ADDRESS" "setProcessor(address,bool)" "$OPERATOR" true
 
-PRODUCTS=(
-  "1|Tempo Hoodie|42000000|500"
-  "2|Ceramic Mug|8000000|750"
-  "3|Desk Mat|18000000|500"
-  "4|Canvas Tote|14000000|800"
-  "5|Notebook Pack|12500000|1000"
-  "6|Stainless Bottle|22000000|600"
-  "7|Mechanical Keyboard|64000000|250"
-  "8|Desk Lamp|35000000|350"
-  "9|Gift Card|25000000|1000"
-  "10|Sticker Sheet|3500000|2000"
-)
+if [[ "$CHAIN_ID" == "4217" ]]; then
+  PRODUCTS=(
+    "1|Tempo Flight Pass|1000|10000"
+    "2|Tempo Dollar Lane|10000|5000"
+    "3|Tempo Treasury Bag|100000|1000"
+  )
+else
+  PRODUCTS=(
+    "1|Tempo Flight Pass|1000000|10000"
+    "2|Tempo Dollar Lane|10000000|5000"
+    "3|Tempo Treasury Bag|100000000|1000"
+  )
+fi
 
 for product in "${PRODUCTS[@]}"; do
   IFS="|" read -r id name price max_supply <<<"$product"
