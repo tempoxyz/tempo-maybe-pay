@@ -9,6 +9,7 @@ import {
 } from '@tempo-maybe-pay/shared'
 import {
   createClient,
+  decodeEventLog,
   decodeFunctionData,
   encodeAbiParameters,
   encodeFunctionData,
@@ -20,6 +21,7 @@ import {
   publicActions,
   walletActions,
   type Hex,
+  type Log,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { tempo, tempoModerato } from 'viem/chains'
@@ -40,12 +42,115 @@ type TempoRpcTransaction = {
   calls?: readonly TempoRpcCall[]
 }
 type TempoRpcReceipt = {
-  status?: Hex
+  logs?: readonly Log[]
+  status?: Hex | 'success' | boolean
 }
+
+const transferWithMemoEventAbi = [
+  {
+    type: 'event',
+    name: 'TransferWithMemo',
+    inputs: [
+      { name: 'from', type: 'address', indexed: true },
+      { name: 'to', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'memo', type: 'bytes32', indexed: true },
+    ],
+  },
+] as const
 
 function sameAddress(left: string, right: string): boolean {
   if (!isAddress(left) || !isAddress(right)) return false
   return getAddress(left) === getAddress(right)
+}
+
+function receiptSucceeded(status: TempoRpcReceipt['status']): boolean {
+  return status === '0x1' || status === 'success' || status === true
+}
+
+function receiptHasEscrowTransfer({
+  buyer,
+  deployment,
+  maxEscrow,
+  orderId,
+  receipt,
+}: {
+  buyer: Hex
+  deployment: Deployment
+  maxEscrow: bigint
+  orderId: Hex
+  receipt: TempoRpcReceipt
+}): boolean {
+  if (!deployment.store) return false
+
+  for (const log of receipt.logs ?? []) {
+    if (!sameAddress(log.address, deployment.paymentToken)) continue
+
+    try {
+      const decoded = decodeEventLog({
+        abi: transferWithMemoEventAbi,
+        data: log.data,
+        topics: log.topics,
+      })
+      if (decoded.eventName !== 'TransferWithMemo') continue
+
+      const args = decoded.args
+      if (
+        sameAddress(args.from, buyer) &&
+        sameAddress(args.to, deployment.store) &&
+        args.amount === maxEscrow &&
+        args.memo.toLowerCase() === orderId.toLowerCase()
+      ) {
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return false
+}
+
+function transactionCallsEscrow({
+  deployment,
+  maxEscrow,
+  orderId,
+  transaction,
+}: {
+  deployment: Deployment
+  maxEscrow: bigint
+  orderId: Hex
+  transaction: TempoRpcTransaction
+}): boolean {
+  if (!deployment.store) return false
+
+  const calls =
+    transaction.calls && transaction.calls.length > 0
+      ? transaction.calls
+      : [{ to: transaction.to ?? undefined, input: transaction.input ?? transaction.data ?? undefined }]
+
+  for (const call of calls) {
+    const data = call.input ?? call.data ?? undefined
+    if (!call.to || !data || !sameAddress(call.to, deployment.paymentToken)) continue
+
+    try {
+      const decoded = decodeFunctionData({ abi: tip20Abi, data })
+      if (decoded.functionName !== 'transferWithMemo') continue
+
+      const [to, amount, memo] = decoded.args
+      if (
+        sameAddress(to, deployment.store) &&
+        amount === maxEscrow &&
+        String(memo).toLowerCase() === orderId.toLowerCase()
+      ) {
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return false
 }
 
 function getOperatorPrivateKey(): Hex {
@@ -126,35 +231,16 @@ export async function verifyEscrowPayment({
   ])
 
   if (!transaction || !receipt) throw new Error('Payment transaction was not found')
-  if (receipt.status !== '0x1') throw new Error('Payment transaction did not succeed')
+  if (!receiptSucceeded(receipt.status)) throw new Error('Payment transaction did not succeed')
+  if (receiptHasEscrowTransfer({ buyer, deployment, maxEscrow, orderId, receipt })) {
+    return
+  }
+
   if (!transaction.from || !sameAddress(transaction.from, buyer)) {
     throw new Error('Payment transaction was not sent by the buyer wallet')
   }
-
-  const calls =
-    transaction.calls && transaction.calls.length > 0
-      ? transaction.calls
-      : [{ to: transaction.to ?? undefined, input: transaction.input ?? transaction.data ?? undefined }]
-
-  for (const call of calls) {
-    const data = call.input ?? call.data ?? undefined
-    if (!call.to || !data || !sameAddress(call.to, deployment.paymentToken)) continue
-
-    try {
-      const decoded = decodeFunctionData({ abi: tip20Abi, data })
-      if (decoded.functionName !== 'transferWithMemo') continue
-
-      const [to, amount, memo] = decoded.args
-      if (
-        sameAddress(to, deployment.store) &&
-        amount === maxEscrow &&
-        String(memo).toLowerCase() === orderId.toLowerCase()
-      ) {
-        return
-      }
-    } catch {
-      continue
-    }
+  if (transactionCallsEscrow({ deployment, maxEscrow, orderId, transaction })) {
+    return
   }
 
   throw new Error('Payment transaction did not escrow the expected pathUSD with the order memo')

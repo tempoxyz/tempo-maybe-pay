@@ -80,6 +80,16 @@ type OwnedClaim = {
   expired: boolean
 }
 
+type TempoSyncReceipt = {
+  hash?: Hex
+  status?: unknown
+  transactionHash?: Hex
+}
+
+function receiptFailed(status: unknown): boolean {
+  return status === false || status === '0x0' || status === 'reverted'
+}
+
 function shortValue(value: string, visible = 6): string {
   return `${value.slice(0, visible)}...${value.slice(-4)}`
 }
@@ -172,7 +182,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const { disconnect } = useDisconnect()
   const { switchChainAsync } = useSwitchChain()
   const sendTransactionSync = useSendTransactionSync() as unknown as {
-    mutateAsync: (args: Record<string, unknown>) => Promise<{ transactionHash?: Hex; hash?: Hex }>
+    mutateAsync: (args: Record<string, unknown>) => Promise<TempoSyncReceipt>
     isPending: boolean
   }
 
@@ -420,9 +430,11 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       const receipt = await sendTransactionSync.mutateAsync({
         calls: [{ data: escrowData, to: deployment.paymentToken }],
         chainId: selectedChainId,
+        feeToken: deployment.paymentToken,
       })
       const hash = receipt.transactionHash ?? receipt.hash
       if (!hash) throw new Error('Wallet did not return a payment transaction hash')
+      if (receiptFailed(receipt.status)) throw new Error('Payment transaction failed before escrow. No order was processed.')
       setPlaceTransactionHash(hash)
 
       setStage('processing')
@@ -439,7 +451,10 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         },
         method: 'POST',
       })
-      if (!processResponse.ok) throw new Error(await processResponse.text())
+      if (!processResponse.ok) {
+        const reason = await processResponse.text()
+        throw new Error(reason ? `Payment verification failed: ${reason}` : 'Payment verification failed.')
+      }
       const processed = (await processResponse.json()) as ProcessResult
       setResult(processed)
       setStage('resolved')
