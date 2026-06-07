@@ -119,6 +119,13 @@ function formatTokenAmount(raw: string | bigint, symbol: string): string {
   return `${formatRawPathUsd(raw)} ${symbol}`
 }
 
+function withSelectedFeeToken(
+  args: Record<string, unknown>,
+  deployment: { paymentToken: Hex; railId: string },
+): Record<string, unknown> {
+  return deployment.railId === 'usdc' ? { ...args, feeToken: deployment.paymentToken } : args
+}
+
 function formatCountdown(deadline: bigint, nowSeconds: number): string {
   const remaining = Number(deadline) - nowSeconds
   if (remaining <= 0) return 'Expired'
@@ -453,10 +460,15 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       })
 
       setStage('placing')
-      const receipt = await sendTransactionSync.mutateAsync({
-        calls: [{ data: escrowData, to: deployment.paymentToken }],
-        chainId: selectedChainId,
-      })
+      const receipt = await sendTransactionSync.mutateAsync(
+        withSelectedFeeToken(
+          {
+            calls: [{ data: escrowData, to: deployment.paymentToken }],
+            chainId: selectedChainId,
+          },
+          deployment,
+        ),
+      )
       const hash = receipt.transactionHash ?? receipt.hash
       if (!hash) throw new Error('Wallet did not return a payment transaction hash')
       if (receiptFailed(receipt.status)) throw new Error('Payment transaction failed before escrow. No order was processed.')
@@ -545,8 +557,13 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         functionName: 'expireRedemption',
       })
       const receipt = await sendTransactionSync.mutateAsync({
-        calls: [{ data, to: deployment.store }],
-        chainId: selectedChainId,
+        ...withSelectedFeeToken(
+          {
+            calls: [{ data, to: deployment.store }],
+            chainId: selectedChainId,
+          },
+          deployment,
+        ),
       })
       const hash = receipt.transactionHash ?? receipt.hash
       setRedemptionTransactionHash(hash)
