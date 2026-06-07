@@ -1,7 +1,7 @@
 import {
   deriveEpochSeed,
   ensureEpoch,
-  getServerDeployment,
+  getServerRailDeployment,
   getTempoClient,
   readCurrentEpochId,
   readEpoch,
@@ -109,7 +109,7 @@ async function buildResolvedResponse({
   payProbabilityBps,
   processTransactionHash,
 }: {
-  deployment: ReturnType<typeof getServerDeployment>
+  deployment: ReturnType<typeof getServerRailDeployment>
   epochId: bigint
   event: ResolvedOrderEvent
   maxEscrow: bigint
@@ -121,10 +121,10 @@ async function buildResolvedResponse({
   if (!product) throw new Error('Unknown product')
 
   const [epoch, nftOwner, redemption, houseStats] = await Promise.all([
-    readEpoch(deployment.chainId, epochId),
-    readNftOwner(deployment.chainId, event.tokenId),
-    readRedemption(deployment.chainId, event.tokenId),
-    readHouseStats(deployment.chainId),
+    readEpoch(deployment.chainId, epochId, deployment.railId),
+    readNftOwner(deployment.chainId, event.tokenId, deployment.railId),
+    readRedemption(deployment.chainId, event.tokenId, deployment.railId),
+    readHouseStats(deployment.chainId, deployment.railId),
   ])
   const seed = deriveEpochSeed(deployment, epochId)
   const basePrice = getProductPrice(product, deployment.chainId)
@@ -146,6 +146,8 @@ async function buildResolvedResponse({
     paidAmount: event.paidAmount.toString(),
     payProbabilityBps,
     paymentTransactionHash: event.paymentTransactionHash,
+    paymentRailId: deployment.railId,
+    paymentTokenSymbol: deployment.symbol,
     processTransactionHash,
     productId: event.productId.toString(),
     refundedAmount: event.refundedAmount.toString(),
@@ -168,10 +170,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const chainId = request.nextUrl.searchParams.get('chainId')
-    const deployment = getServerDeployment(chainId)
+    const railId = request.nextUrl.searchParams.get('rail')
+    const deployment = getServerRailDeployment(chainId, railId)
     if (!deployment.store) throw new Error('Store is not deployed')
 
-    if (await readProcessedOrder(deployment.chainId, orderId as Hex)) {
+    if (await readProcessedOrder(deployment.chainId, orderId as Hex, deployment.railId)) {
       return new NextResponse('Order is already processed', { status: 409 })
     }
 
@@ -188,9 +191,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       maxEscrow,
       orderId: orderId as Hex,
       paymentTransactionHash,
+      railId: deployment.railId,
     })
 
-    const epochId = await readCurrentEpochId(deployment.chainId)
+    const epochId = await readCurrentEpochId(deployment.chainId, deployment.railId)
     const seed = deriveEpochSeed(deployment, epochId)
     const data = encodeFunctionData({
       abi: maybePayStoreAbi,
@@ -206,7 +210,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       functionName: 'processPaidOrder',
     })
 
-    const client = getTempoClient(deployment.chainId)
+    const client = getTempoClient(deployment.chainId, deployment.railId)
     let processTransactionHash: Hex
     try {
       const receipt = await client.sendTransactionSync({
@@ -215,7 +219,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       } as never)
       processTransactionHash = receipt.transactionHash as Hex
     } catch (error) {
-      if (!(await readProcessedOrder(deployment.chainId, orderId as Hex))) throw error
+      if (!(await readProcessedOrder(deployment.chainId, orderId as Hex, deployment.railId))) throw error
       return new NextResponse('Order is already processed', { status: 409 })
     }
 
@@ -225,7 +229,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     })) as TempoRpcReceipt
     const event = decodeResolvedOrderEvent(processReceipt, deployment.store)
 
-    await ensureEpoch(deployment.chainId).catch(() => undefined)
+    await ensureEpoch(deployment.chainId, deployment.railId).catch(() => undefined)
 
     return buildResolvedResponse({
       deployment,

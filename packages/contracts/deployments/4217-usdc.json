@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "chainId": 4217,
+  "paymentRailId": "usdc",
+  "rpcUrl": "https://rpc.tempo.xyz",
+  "paymentToken": "0x20c000000000000000000000b9537d11c60e8b50",
+  "paymentTokenSymbol": "USDC.e",
+  "feeToken": "0x20c0000000000000000000000000000000000000",
+  "merchant": "0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4",
+  "deployer": "0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4",
+  "operator": "0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4",
+  "nft": "0x64c0c6305b4D3C9290C3412374f6A455EDFDdcd7",
+  "store": "0xDD7c855e521B9371aB7c7d2166964b69D239315A",
+  "houseBankrollAmount": "0",
+  "deployedAt": "2026-06-07T22:48:03Z"
+}
