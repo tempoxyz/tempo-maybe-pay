@@ -9,6 +9,7 @@ import {
   maybePayNftAbi,
   maybePayStoreAbi,
   normalizeChainId,
+  normalizePaymentRailId,
   products,
   quoteMaxEscrow,
   quoteRedeemValue,
@@ -51,6 +52,8 @@ type ProcessResult = {
   paidAmount: string
   payProbabilityBps: number
   paymentTransactionHash?: Hex
+  paymentRailId?: string
+  paymentTokenSymbol?: string
   processTransactionHash?: Hex
   productId: string
   refundedAmount: string
@@ -112,6 +115,17 @@ function formatRawPathUsd(raw: string | bigint): string {
   return formatPathUsd(typeof raw === 'bigint' ? raw : BigInt(raw))
 }
 
+function formatTokenAmount(raw: string | bigint, symbol: string): string {
+  return `${formatRawPathUsd(raw)} ${symbol}`
+}
+
+function withSelectedFeeToken(
+  args: Record<string, unknown>,
+  deployment: { paymentToken: Hex; railId: string },
+): Record<string, unknown> {
+  return deployment.railId === 'usdc' ? { ...args, feeToken: deployment.paymentToken } : args
+}
+
 function formatCountdown(deadline: bigint, nowSeconds: number): string {
   const remaining = Number(deadline) - nowSeconds
   if (remaining <= 0) return 'Expired'
@@ -130,9 +144,10 @@ type NftProductCardProps = {
   price: bigint
   product: Product
   redeemValue: bigint
+  symbol: string
 }
 
-function NftProductCard({ bankrupt = false, onClick, price, product, redeemValue }: NftProductCardProps) {
+function NftProductCard({ bankrupt = false, onClick, price, product, redeemValue, symbol }: NftProductCardProps) {
   const content = (
     <>
       <img alt={product.name} src={product.image} />
@@ -140,8 +155,8 @@ function NftProductCard({ bankrupt = false, onClick, price, product, redeemValue
         <strong>{product.name}</strong>
         <em>{product.description}</em>
         <span className="productMoney">
-          <span>{formatPathUsd(price)} pathUSD</span>
-          <span>{formatPathUsd(redeemValue)} pathUSD cash-out</span>
+          <span>{formatTokenAmount(price, symbol)}</span>
+          <span>{formatTokenAmount(redeemValue, symbol)} cash-out</span>
         </span>
         {bankrupt ? <span className="productAction">House bankrupt</span> : null}
       </span>
@@ -175,7 +190,9 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const selectedChainId = normalizeChainId(searchParams.get('chainId'))
-  const deployment = getDeployment(selectedChainId)
+  const selectedRailId = normalizePaymentRailId(searchParams.get('rail'))
+  const deployment = getDeployment(selectedChainId, selectedRailId)
+  const tokenSymbol = deployment.symbol
   const chainId = useChainId()
   const { address, isConnected } = useAccount()
   const { connectors, connectAsync, isPending: isConnecting } = useConnect()
@@ -202,7 +219,13 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const isCheckoutPage = checkoutProductId !== undefined
   const product = products.find((item) => item.id === (checkoutProductId ?? products[0].id)) ?? products[0]
   const routeForChain = (nextChainId: ChainId) =>
-    isCheckoutPage ? `/checkout/${product.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`
+    isCheckoutPage
+      ? `/checkout/${product.id}?chainId=${nextChainId}&rail=${selectedRailId}`
+      : `/?chainId=${nextChainId}&rail=${selectedRailId}`
+  const routeForRail = (nextRailId: 'pathusd' | 'usdc') =>
+    isCheckoutPage
+      ? `/checkout/${product.id}?chainId=${selectedChainId}&rail=${nextRailId}`
+      : `/?chainId=${selectedChainId}&rail=${nextRailId}`
   const basePrice = getProductPrice(product, selectedChainId)
   const payProbabilityBps = 10_000 - freeProbabilityBps
   const maxEscrow = useMemo(
@@ -375,6 +398,14 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
     }
   }
 
+  function changeRail() {
+    setError(undefined)
+    setResult(undefined)
+    setPlaceTransactionHash(undefined)
+    setRedemptionTransactionHash(undefined)
+    setStage('idle')
+  }
+
   async function refetchLiveData() {
     await Promise.all([
       balanceQuery.refetch(),
@@ -401,7 +432,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       return
     }
     if (!hasFunds) {
-      setError(`Wallet needs at least ${formatPathUsd(maxEscrow)} pathUSD for this probability.`)
+      setError(`Wallet needs at least ${formatTokenAmount(maxEscrow, tokenSymbol)} for this probability.`)
       return
     }
 
@@ -416,7 +447,9 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       }
 
       setStage('epoch')
-      const epochResponse = await fetch(`/api/epoch/ensure?chainId=${selectedChainId}`, { method: 'POST' })
+      const epochResponse = await fetch(`/api/epoch/ensure?chainId=${selectedChainId}&rail=${selectedRailId}`, {
+        method: 'POST',
+      })
       if (!epochResponse.ok) throw new Error(await epochResponse.text())
 
       const orderId = randomOrderId()
@@ -427,18 +460,22 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       })
 
       setStage('placing')
-      const receipt = await sendTransactionSync.mutateAsync({
-        calls: [{ data: escrowData, to: deployment.paymentToken }],
-        chainId: selectedChainId,
-        feeToken: deployment.paymentToken,
-      })
+      const receipt = await sendTransactionSync.mutateAsync(
+        withSelectedFeeToken(
+          {
+            calls: [{ data: escrowData, to: deployment.paymentToken }],
+            chainId: selectedChainId,
+          },
+          deployment,
+        ),
+      )
       const hash = receipt.transactionHash ?? receipt.hash
       if (!hash) throw new Error('Wallet did not return a payment transaction hash')
       if (receiptFailed(receipt.status)) throw new Error('Payment transaction failed before escrow. No order was processed.')
       setPlaceTransactionHash(hash)
 
       setStage('processing')
-      const processResponse = await fetch(`/api/orders/${orderId}/process?chainId=${selectedChainId}`, {
+      const processResponse = await fetch(`/api/orders/${orderId}/process?chainId=${selectedChainId}&rail=${selectedRailId}`, {
         body: JSON.stringify({
           buyer: address,
           maxEscrow: maxEscrow.toString(),
@@ -479,7 +516,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         await switchChainAsync({ chainId: selectedChainId })
       }
 
-      const redeemResponse = await fetch(`/api/tokens/${tokenId.toString()}/redeem?chainId=${selectedChainId}`, {
+      const redeemResponse = await fetch(`/api/tokens/${tokenId.toString()}/redeem?chainId=${selectedChainId}&rail=${selectedRailId}`, {
         body: JSON.stringify({ owner: address }),
         headers: {
           'Content-Type': 'application/json',
@@ -520,9 +557,13 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         functionName: 'expireRedemption',
       })
       const receipt = await sendTransactionSync.mutateAsync({
-        calls: [{ data, to: deployment.store }],
-        chainId: selectedChainId,
-        feeToken: deployment.paymentToken,
+        ...withSelectedFeeToken(
+          {
+            calls: [{ data, to: deployment.store }],
+            chainId: selectedChainId,
+          },
+          deployment,
+        ),
       })
       const hash = receipt.transactionHash ?? receipt.hash
       setRedemptionTransactionHash(hash)
@@ -537,7 +578,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   return (
     <main className="shell">
       <header className="siteHeader">
-        <Link className="logoLink" href={`/?chainId=${selectedChainId}`}>
+        <Link className="logoLink" href={`/?chainId=${selectedChainId}&rail=${selectedRailId}`}>
           Tempo Maybe Pay
         </Link>
         <div className="controls">
@@ -577,6 +618,45 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                 data-disabled={busy || undefined}
               >
                 Mainnet
+              </Link>
+            </div>
+          </div>
+          <div className="networkSwitch">
+            <span>Pay with</span>
+            <div className="networkOptions" role="group" aria-label="Payment token">
+              <Link
+                aria-pressed={selectedRailId === 'pathusd'}
+                className="networkButton"
+                href={routeForRail('pathusd')}
+                onClick={(event) => {
+                  if (busy) {
+                    event.preventDefault()
+                    return
+                  }
+                  changeRail()
+                }}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                data-disabled={busy || undefined}
+              >
+                pathUSD
+              </Link>
+              <Link
+                aria-pressed={selectedRailId === 'usdc'}
+                className="networkButton"
+                href={routeForRail('usdc')}
+                onClick={(event) => {
+                  if (busy) {
+                    event.preventDefault()
+                    return
+                  }
+                  changeRail()
+                }}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                data-disabled={busy || undefined}
+              >
+                USDC
               </Link>
             </div>
           </div>
@@ -620,16 +700,16 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           <section className={`houseDashboard ${houseSolvent ? '' : 'bankrupt'}`}>
             <div className="houseLead">
               <span className="eyebrow">House bankroll</span>
-              <strong>{chainReady ? `${formatPathUsd(houseBankroll)} pathUSD` : 'Not deployed'}</strong>
+              <strong>{chainReady ? formatTokenAmount(houseBankroll, tokenSymbol) : 'Not deployed'}</strong>
             </div>
             <div className="houseStats">
               <div>
                 <span>Live NFT claims</span>
-                <strong>{chainReady ? `${formatPathUsd(outstandingLiability)} pathUSD` : '-'}</strong>
+                <strong>{chainReady ? formatTokenAmount(outstandingLiability, tokenSymbol) : '-'}</strong>
               </div>
               <div>
                 <span>Pending escrow</span>
-                <strong>{chainReady ? `${formatPathUsd(pendingEscrow)} pathUSD` : '-'}</strong>
+                <strong>{chainReady ? formatTokenAmount(pendingEscrow, tokenSymbol) : '-'}</strong>
               </div>
             </div>
           </section>
@@ -646,12 +726,12 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </div>
             <div className="sectionActions">
               {isCheckoutPage ? (
-                <Link className="secondaryButton backButton" href={`/?chainId=${selectedChainId}`}>
+                <Link className="secondaryButton backButton" href={`/?chainId=${selectedChainId}&rail=${selectedRailId}`}>
                   <ArrowLeft size={14} />
                   Go back to store
                 </Link>
               ) : null}
-              <span>{isCheckoutPage ? `${formatPathUsd(basePrice)} pathUSD` : `${products.length} items available`}</span>
+              <span>{isCheckoutPage ? formatTokenAmount(basePrice, tokenSymbol) : `${products.length} items available`}</span>
             </div>
           </div>
           {isCheckoutPage ? (
@@ -661,6 +741,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                 price={basePrice}
                 product={product}
                 redeemValue={redeemValue}
+                symbol={tokenSymbol}
               />
             </div>
           ) : (
@@ -673,10 +754,11 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   <NftProductCard
                     bankrupt={!productSolvent}
                     key={item.id}
-                    onClick={() => router.push(`/checkout/${item.id}?chainId=${selectedChainId}`)}
+                    onClick={() => router.push(`/checkout/${item.id}?chainId=${selectedChainId}&rail=${selectedRailId}`)}
                     price={itemBasePrice}
                     product={item}
                     redeemValue={itemRedeemValue}
+                    symbol={tokenSymbol}
                   />
                 )
               })}
@@ -700,12 +782,12 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             <div>
               <Banknote size={18} />
               <span>NFT cost</span>
-              <strong>{formatPathUsd(basePrice)} pathUSD</strong>
+              <strong>{formatTokenAmount(basePrice, tokenSymbol)}</strong>
             </div>
             <div>
               <Flame size={18} />
               <span>This NFT claim</span>
-              <strong>{formatPathUsd(redeemValue)} pathUSD</strong>
+              <strong>{formatTokenAmount(redeemValue, tokenSymbol)}</strong>
             </div>
             <div>
               <Clock3 size={18} />
@@ -751,19 +833,19 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
               </div>
               <div>
                 <span>If free</span>
-                <strong>0 pathUSD</strong>
+                <strong>{formatTokenAmount(0n, tokenSymbol)}</strong>
               </div>
               <div>
                 <span>If paid</span>
-                <strong>{formatPathUsd(maxEscrow)} pathUSD</strong>
+                <strong>{formatTokenAmount(maxEscrow, tokenSymbol)}</strong>
               </div>
               <div>
                 <span>Expected payment</span>
-                <strong>{formatPathUsd(basePrice)} pathUSD</strong>
+                <strong>{formatTokenAmount(basePrice, tokenSymbol)}</strong>
               </div>
               <div>
                 <span>NFT cash-out</span>
-                <strong>{formatPathUsd(redeemValue)} pathUSD</strong>
+                <strong>{formatTokenAmount(redeemValue, tokenSymbol)}</strong>
               </div>
               <div>
                 <span>Paid multiplier</span>
@@ -771,7 +853,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
               </div>
               <div>
                 <span>House EV</span>
-                <strong>{formatPathUsd(basePrice - redeemValue)} pathUSD</strong>
+                <strong>{formatTokenAmount(basePrice - redeemValue, tokenSymbol)}</strong>
               </div>
             </div>
           </div>
@@ -779,7 +861,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           {!chainReady ? (
             <div className="notice">Checkout is not available on this network yet.</div>
           ) : null}
-          {address && selectedChainId === 42431 && !hasFunds ? (
+          {address && selectedChainId === 42431 && selectedRailId === 'pathusd' && !hasFunds ? (
             <a
               className="notice linkNotice"
               href="https://docs.tempo.xyz/quickstart/faucet"
@@ -823,28 +905,28 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                 <span>
                   Roll {result.roll} {result.status === 'paid' ? 'fell below' : 'landed at or above'} threshold{' '}
                   {result.threshold}. Item token #{result.tokenId} minted to payer
-                  {result.status === 'free' ? ', and the escrowed pathUSD was returned to their wallet.' : '.'}
+                  {result.status === 'free' ? `, and the escrowed ${tokenSymbol} was returned to their wallet.` : '.'}
                 </span>
                 {result.status === 'free' ? (
                   <div className="escrowReturnCallout">
                     <span>Escrow returned to wallet</span>
-                    <strong>{formatRawPathUsd(result.refundedAmount)} pathUSD</strong>
+                    <strong>{formatTokenAmount(result.refundedAmount, tokenSymbol)}</strong>
                   </div>
                 ) : null}
                 <div className="receiptRows">
                   <div>
                     <span>Escrowed</span>
-                    <strong>{formatRawPathUsd(result.maxEscrow)} pathUSD</strong>
+                    <strong>{formatTokenAmount(result.maxEscrow, tokenSymbol)}</strong>
                   </div>
                   <div>
                     <span>{result.status === 'paid' ? 'Kept by house' : 'Returned to payer'}</span>
                     <strong>
-                      {formatRawPathUsd(result.status === 'paid' ? result.paidAmount : result.refundedAmount)} pathUSD
+                      {formatTokenAmount(result.status === 'paid' ? result.paidAmount : result.refundedAmount, tokenSymbol)}
                     </strong>
                   </div>
                   <div>
                     <span>NFT cash-out value</span>
-                    <strong>{formatRawPathUsd(result.redeemValue)} pathUSD</strong>
+                    <strong>{formatTokenAmount(result.redeemValue, tokenSymbol)}</strong>
                   </div>
                   <div>
                     <span>Cash-out timer</span>
@@ -856,11 +938,11 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   </div>
                   <div>
                     <span>House bankroll</span>
-                    <strong>{formatRawPathUsd(result.houseBankroll)} pathUSD</strong>
+                    <strong>{formatTokenAmount(result.houseBankroll, tokenSymbol)}</strong>
                   </div>
                   <div>
                     <span>Live claims</span>
-                    <strong>{formatRawPathUsd(result.houseOutstandingLiability)} pathUSD</strong>
+                    <strong>{formatTokenAmount(result.houseOutstandingLiability, tokenSymbol)}</strong>
                   </div>
                   <div>
                     <span>Epoch</span>
@@ -887,7 +969,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                     onClick={() => void redeemToken(BigInt(result.tokenId))}
                   >
                     {stage === 'redeeming' ? <RefreshCw className="spin" size={16} /> : <RotateCcw size={16} />}
-                    Redeem NFT for {formatRawPathUsd(result.redeemValue)} pathUSD
+                    Redeem NFT for {formatTokenAmount(result.redeemValue, tokenSymbol)}
                   </button>
                 ) : result.redeemActive ? (
                   <button
@@ -979,7 +1061,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                         onClick={() => void redeemToken(claim.tokenId)}
                       >
                         {stage === 'redeeming' ? <RefreshCw className="spin" size={15} /> : <RotateCcw size={15} />}
-                        Redeem {formatPathUsd(claim.redeemValue)}
+                        Redeem {formatTokenAmount(claim.redeemValue, tokenSymbol)}
                       </button>
                     </div>
                   ))}
