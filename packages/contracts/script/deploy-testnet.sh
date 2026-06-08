@@ -18,10 +18,7 @@ if [[ -z "$OPERATOR_PRIVATE_KEY" ]]; then
 fi
 
 RPC_URL="${TEMPO_RPC_URL:-${TEMPO_TESTNET_RPC_URL:-https://rpc.testnet.tempo.xyz}}"
-PAYMENT_RAIL_ID="${PAYMENT_RAIL_ID:-pathusd}"
-PAYMENT_TOKEN="${PAYMENT_TOKEN_ADDRESS:-${PAYMENT_TOKEN:-${PATHUSD_ADDRESS:-0x20c0000000000000000000000000000000000000}}}"
-PAYMENT_TOKEN_SYMBOL="${PAYMENT_TOKEN_SYMBOL:-pathUSD}"
-FEE_TOKEN="${FEE_TOKEN_ADDRESS:-${FEE_TOKEN:-$PAYMENT_TOKEN}}"
+FEE_TOKEN="${PATHUSD_ADDRESS:-0x20c0000000000000000000000000000000000000}"
 MERCHANT="${MERCHANT_ADDRESS:-$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")}"
 DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
 OPERATOR="${OPERATOR_ADDRESS:-$(cast wallet address --private-key "$OPERATOR_PRIVATE_KEY")}"
@@ -29,7 +26,7 @@ CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL")"
 METADATA_BASE_URL="${METADATA_BASE_URL:-https://tempo-maybe-pay.vercel.app}"
 HOUSE_BANKROLL_AMOUNT="${HOUSE_BANKROLL_AMOUNT:-0}"
 OUT_DIR="$ROOT_DIR/deployments"
-OUT_FILE="$OUT_DIR/$CHAIN_ID-$PAYMENT_RAIL_ID.json"
+OUT_FILE="$OUT_DIR/$CHAIN_ID.json"
 
 mkdir -p "$OUT_DIR"
 
@@ -57,10 +54,7 @@ echo "Deploying Tempo Maybe Pay to chain $CHAIN_ID"
 echo "Deployer: $DEPLOYER"
 echo "Operator: $OPERATOR"
 echo "Merchant: $MERCHANT"
-echo "Payment rail: $PAYMENT_RAIL_ID"
-echo "Payment token: $PAYMENT_TOKEN_SYMBOL $PAYMENT_TOKEN"
-echo "Transaction fee token: $FEE_TOKEN"
-echo "House bankroll seed: $HOUSE_BANKROLL_AMOUNT $PAYMENT_TOKEN_SYMBOL base units"
+echo "House bankroll seed: $HOUSE_BANKROLL_AMOUNT pathUSD base units"
 
 NFT_JSON="$(
   deploy_contract src/TempoMaybePayNFTV2.sol:TempoMaybePayNFTV2 \
@@ -71,7 +65,7 @@ echo "NFT: $NFT_ADDRESS"
 
 STORE_JSON="$(
   deploy_contract src/TempoMaybePayStoreV2.sol:TempoMaybePayStoreV2 \
-    --constructor-args "$PAYMENT_TOKEN" "$NFT_ADDRESS" "$MERCHANT" "$DEPLOYER"
+    --constructor-args "$FEE_TOKEN" "$NFT_ADDRESS" "$MERCHANT" "$DEPLOYER"
 )"
 STORE_ADDRESS="$(printf '%s' "$STORE_JSON" | jq -r '.deployedTo')"
 echo "Store: $STORE_ADDRESS"
@@ -100,18 +94,15 @@ for product in "${PRODUCTS[@]}"; do
 done
 
 if [[ "$HOUSE_BANKROLL_AMOUNT" != "0" ]]; then
-  send_tx "$PAYMENT_TOKEN" "transfer(address,uint256)" "$STORE_ADDRESS" "$HOUSE_BANKROLL_AMOUNT"
+  send_tx "$FEE_TOKEN" "transfer(address,uint256)" "$STORE_ADDRESS" "$HOUSE_BANKROLL_AMOUNT"
 fi
 
 cat > "$OUT_FILE" <<JSON
 {
   "version": 2,
   "chainId": $CHAIN_ID,
-  "paymentRailId": "$PAYMENT_RAIL_ID",
   "rpcUrl": "$RPC_URL",
-  "paymentToken": "$PAYMENT_TOKEN",
-  "paymentTokenSymbol": "$PAYMENT_TOKEN_SYMBOL",
-  "feeToken": "$FEE_TOKEN",
+  "paymentToken": "$FEE_TOKEN",
   "merchant": "$MERCHANT",
   "deployer": "$DEPLOYER",
   "operator": "$OPERATOR",

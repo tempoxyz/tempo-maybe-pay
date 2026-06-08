@@ -1,4 +1,4 @@
-import { getServerRailDeployment, getTempoClient } from '@/app/lib/tempo-server'
+import { getServerDeployment, getTempoClient } from '@/app/lib/tempo-server'
 import { maybePayStoreAbi } from '@tempo-maybe-pay/shared'
 import { NextResponse, type NextRequest } from 'next/server'
 import { encodeFunctionData, getAddress, isAddress, type Hex } from 'viem'
@@ -29,8 +29,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const owner = parseOwner(body.owner)
 
     const chainId = request.nextUrl.searchParams.get('chainId')
-    const railId = request.nextUrl.searchParams.get('rail')
-    const deployment = getServerRailDeployment(chainId, railId)
+    const deployment = getServerDeployment(chainId)
     if (!deployment.store) throw new Error('Store is not deployed')
 
     const data = encodeFunctionData({
@@ -38,7 +37,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       args: [owner, tokenId],
       functionName: 'redeemFor',
     })
-    const client = getTempoClient(deployment.chainId, deployment.railId)
+    const client = getTempoClient(deployment.chainId)
     const receipt = await client.sendTransactionSync({
       calls: [{ data, to: deployment.store }],
       feeToken: deployment.paymentToken,
