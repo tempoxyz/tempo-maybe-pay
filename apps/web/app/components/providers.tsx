@@ -4,12 +4,14 @@ import { chainDeployments } from '@tempo-maybe-pay/shared'
 import { Expiry } from 'accounts'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { parseUnits, toFunctionSelector, type Hex } from 'viem'
+import { numberToHex, parseUnits, toFunctionSelector, type Hex } from 'viem'
 import { http, WagmiProvider, createConfig, useAccount } from 'wagmi'
 import { tempo, tempoModerato } from 'wagmi/chains'
 import { tempoWallet } from 'wagmi/tempo'
 
-const accessKeyDeployment = chainDeployments[42431]
+const accessKeyChainId = 42431
+const accessKeyChainIdHex = numberToHex(accessKeyChainId)
+const accessKeyDeployment = chainDeployments[accessKeyChainId]
 
 function authorizeAccessKey() {
   return {
@@ -37,7 +39,7 @@ type TempoAccountsProvider = {
   getAccessKeyStatus?: (options: {
     address: `0x${string}`
     calls: typeof accessKeyStatusCalls
-    chainId: 42431
+    chainId: typeof accessKeyChainId
   }) => Promise<'missing' | 'pending' | 'published' | 'expired'>
   request: (request: { method: string; params?: unknown[] }) => Promise<unknown>
 }
@@ -67,7 +69,7 @@ function AccessKeyAuthorizer() {
   const attempted = useRef(new Set<string>())
 
   useEffect(() => {
-    if (!isConnected || !address || chainId !== 42431 || connector?.id !== 'xyz.tempo') return
+    if (!isConnected || !address || chainId !== accessKeyChainId || connector?.id !== 'xyz.tempo') return
 
     const attemptKey = `${connector.uid}:${address}:${chainId}`
     if (attempted.current.has(attemptKey)) return
@@ -83,14 +85,14 @@ function AccessKeyAuthorizer() {
         const status = await provider.getAccessKeyStatus?.({
           address: accountAddress,
           calls: accessKeyStatusCalls,
-          chainId: 42431,
+          chainId: accessKeyChainId,
         })
 
         if (cancelled || status === 'pending' || status === 'published') return
 
         await provider.request({
           method: 'wallet_authorizeAccessKey',
-          params: [{ ...authorizeAccessKey(), chainId: 42431 }],
+          params: [{ ...authorizeAccessKey(), chainId: accessKeyChainIdHex }],
         })
       } catch (caught) {
         console.warn('[tempo-maybe-pay] Could not authorize Tempo Wallet access key.', caught)
