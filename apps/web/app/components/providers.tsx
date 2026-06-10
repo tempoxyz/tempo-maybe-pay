@@ -15,6 +15,7 @@ const wagmiConfig = createConfig({
   batch: {
     multicall: false,
   },
+  ssr: true,
   chains: [tempoModerato, tempo],
   connectors: [
     tempoWallet({
