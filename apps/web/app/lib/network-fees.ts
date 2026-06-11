@@ -8,5 +8,5 @@ export function withNetworkFees(
   deployment: NetworkFeeDeployment,
 ): Record<string, unknown> {
   if (deployment.chainId === 42431) return { ...args, feePayer: true }
-  return { ...args, feeToken: deployment.paymentToken }
+  return { ...args, feePayer: false, feeToken: deployment.paymentToken }
 }

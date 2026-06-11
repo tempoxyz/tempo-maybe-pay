@@ -15,6 +15,6 @@ test('testnet requests Tempo fee-payer sponsorship', () => {
 test('mainnet keeps explicit selected fee token', () => {
   assert.deepEqual(
     withNetworkFees({ calls: [], chainId: 4217 }, { chainId: 4217, paymentToken }),
-    { calls: [], chainId: 4217, feeToken: paymentToken },
+    { calls: [], chainId: 4217, feePayer: false, feeToken: paymentToken },
   )
 })
