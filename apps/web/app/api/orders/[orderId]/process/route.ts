@@ -1,18 +1,19 @@
 import {
   deriveEpochSeed,
   ensureEpoch,
-  getServerDeployment,
+  getServerRailDeployment,
   getTempoClient,
-  orderStatusName,
+  readCurrentEpochId,
   readEpoch,
   readHouseStats,
   readNftOwner,
-  readOrder,
+  readProcessedOrder,
   readRedemption,
+  verifyEscrowPayment,
 } from '@/app/lib/tempo-server'
-import { maybePayStoreAbi } from '@tempo-maybe-pay/shared'
+import { getProduct, getProductPrice, maybePayStoreAbi } from '@tempo-maybe-pay/shared'
 import { NextResponse, type NextRequest } from 'next/server'
-import { encodeFunctionData, isHex, type Hex } from 'viem'
+import { decodeEventLog, encodeFunctionData, getAddress, isAddress, isHex, type Hex, type Log } from 'viem'
 
 export const runtime = 'nodejs'
 
@@ -20,56 +21,144 @@ type RouteContext = {
   params: Promise<{ orderId: string }> | { orderId: string }
 }
 
-type ReadOrderResult = Awaited<ReturnType<typeof readOrder>>
+type TempoRpcReceipt = {
+  logs?: readonly Log[]
+  transactionHash?: Hex
+}
 
-async function buildResolvedResponse(
-  deployment: ReturnType<typeof getServerDeployment>,
-  orderId: Hex,
-  order: ReadOrderResult,
-  processTransactionHash?: Hex,
-) {
-  const status = orderStatusName(order.status)
-  if (status !== 'paid' && status !== 'free') {
-    return new NextResponse(`Order resolved to unexpected status ${status}`, { status: 500 })
+type ResolvedOrderEvent = {
+  buyer: Hex
+  paidAmount: bigint
+  paymentTransactionHash: Hex
+  productId: bigint
+  redeemDeadline: bigint
+  redeemValue: bigint
+  refundedAmount: bigint
+  roll: bigint
+  status: 'paid' | 'free'
+  tokenId: bigint
+}
+
+function parseBuyer(value: unknown): Hex {
+  if (typeof value !== 'string' || !isAddress(value)) throw new Error('Invalid buyer')
+  return getAddress(value) as Hex
+}
+
+function parseHex32(value: unknown, label: string): Hex {
+  if (typeof value !== 'string' || !isHex(value, { strict: true }) || value.length !== 66) {
+    throw new Error(`Invalid ${label}`)
+  }
+  return value as Hex
+}
+
+function parsePositiveInteger(value: unknown, label: string): number {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`Invalid ${label}`)
+  return parsed
+}
+
+function parseBigIntString(value: unknown, label: string): bigint {
+  if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new Error(`Invalid ${label}`)
+  return BigInt(value)
+}
+
+function statusFromEvent(value: unknown): 'paid' | 'free' {
+  const status = typeof value === 'bigint' ? Number(value) : Number(value)
+  if (status === 2) return 'paid'
+  if (status === 3) return 'free'
+  throw new Error(`Order resolved to unexpected status ${status}`)
+}
+
+function decodeResolvedOrderEvent(receipt: TempoRpcReceipt, store: Hex): ResolvedOrderEvent {
+  for (const log of receipt.logs ?? []) {
+    if (log.address.toLowerCase() !== store.toLowerCase()) continue
+    try {
+      const decoded = decodeEventLog({
+        abi: maybePayStoreAbi,
+        data: log.data,
+        topics: log.topics,
+      })
+      if (decoded.eventName !== 'PaymentOrderResolved') continue
+      const args = decoded.args
+      return {
+        buyer: args.buyer,
+        paidAmount: args.paidAmount,
+        paymentTransactionHash: args.paymentTxHash,
+        productId: args.productId,
+        redeemDeadline: BigInt(args.redeemDeadline),
+        redeemValue: args.redeemValue,
+        refundedAmount: args.refundedAmount,
+        roll: args.roll,
+        status: statusFromEvent(args.status),
+        tokenId: args.tokenId,
+      }
+    } catch {
+      continue
+    }
   }
 
+  throw new Error('Resolution event was not found')
+}
+
+async function buildResolvedResponse({
+  deployment,
+  epochId,
+  event,
+  maxEscrow,
+  orderId,
+  payProbabilityBps,
+  processTransactionHash,
+}: {
+  deployment: ReturnType<typeof getServerRailDeployment>
+  epochId: bigint
+  event: ResolvedOrderEvent
+  maxEscrow: bigint
+  orderId: Hex
+  payProbabilityBps: number
+  processTransactionHash: Hex
+}) {
+  const product = getProduct(Number(event.productId))
+  if (!product) throw new Error('Unknown product')
+
   const [epoch, nftOwner, redemption, houseStats] = await Promise.all([
-    readEpoch(deployment.chainId, order.epochId),
-    readNftOwner(deployment.chainId, order.tokenId),
-    readRedemption(deployment.chainId, order.tokenId),
-    readHouseStats(deployment.chainId),
+    readEpoch(deployment.chainId, epochId, deployment.railId),
+    readNftOwner(deployment.chainId, event.tokenId, deployment.railId),
+    readRedemption(deployment.chainId, event.tokenId, deployment.railId),
+    readHouseStats(deployment.chainId, deployment.railId),
   ])
-  const seed = deriveEpochSeed(deployment, order.epochId)
-  const paidAmount = status === 'paid' ? order.maxEscrow : 0n
-  const refundedAmount = status === 'free' ? order.maxEscrow : 0n
+  const seed = deriveEpochSeed(deployment, epochId)
+  const basePrice = getProductPrice(product, deployment.chainId)
 
   return NextResponse.json({
-    basePrice: order.basePrice.toString(),
-    buyer: order.buyer,
+    basePrice: basePrice.toString(),
+    buyer: event.buyer,
     commitment: epoch.commitment,
-    epochId: order.epochId.toString(),
-    maxEscrow: order.maxEscrow.toString(),
+    epochId: epochId.toString(),
+    maxEscrow: maxEscrow.toString(),
     houseAvailableReserve: houseStats.availableReserve.toString(),
     houseBankroll: houseStats.bankroll.toString(),
     houseOutstandingLiability: houseStats.outstandingLiability.toString(),
     housePendingEscrow: houseStats.pendingEscrow.toString(),
     merchant: deployment.merchant,
-    metadataHash: order.metadataHash,
+    metadataHash: event.paymentTransactionHash,
     nftOwner,
     orderId,
-    paidAmount: paidAmount.toString(),
-    payProbabilityBps: order.payProbabilityBps,
+    paidAmount: event.paidAmount.toString(),
+    payProbabilityBps,
+    paymentTransactionHash: event.paymentTransactionHash,
+    paymentRailId: deployment.railId,
+    paymentTokenSymbol: deployment.symbol,
     processTransactionHash,
-    productId: order.productId.toString(),
-    refundedAmount: refundedAmount.toString(),
+    productId: event.productId.toString(),
+    refundedAmount: event.refundedAmount.toString(),
     redeemActive: redemption.active,
     redeemDeadline: redemption.deadline.toString(),
     redeemValue: redemption.value.toString(),
-    roll: order.roll.toString(),
+    roll: event.roll.toString(),
     seed,
-    status,
-    threshold: order.payProbabilityBps.toString(),
-    tokenId: order.tokenId.toString(),
+    status: event.status,
+    threshold: payProbabilityBps.toString(),
+    tokenId: event.tokenId.toString(),
   })
 }
 
@@ -81,28 +170,48 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const chainId = request.nextUrl.searchParams.get('chainId')
-    const deployment = getServerDeployment(chainId)
+    const railId = request.nextUrl.searchParams.get('rail')
+    const deployment = getServerRailDeployment(chainId, railId)
     if (!deployment.store) throw new Error('Store is not deployed')
 
-    const before = await readOrder(deployment.chainId, orderId as Hex)
-    const beforeStatus = orderStatusName(before.status)
-    if (beforeStatus === 'none') return new NextResponse('Order not found', { status: 404 })
-    if (beforeStatus === 'paid' || beforeStatus === 'free') {
-      return buildResolvedResponse(deployment, orderId as Hex, before)
-    }
-    if (beforeStatus !== 'pending') {
-      return new NextResponse(`Order is ${beforeStatus}`, { status: 409 })
+    if (await readProcessedOrder(deployment.chainId, orderId as Hex, deployment.railId)) {
+      return new NextResponse('Order is already processed', { status: 409 })
     }
 
-    const seed = deriveEpochSeed(deployment, before.epochId)
-    const data = encodeFunctionData({
-      abi: maybePayStoreAbi,
-      args: [orderId as Hex, seed],
-      functionName: 'processOrder',
+    const body = (await request.json()) as Record<string, unknown>
+    const buyer = parseBuyer(body.buyer)
+    const productId = parsePositiveInteger(body.productId, 'product id')
+    const payProbabilityBps = parsePositiveInteger(body.payProbabilityBps, 'payment probability')
+    const maxEscrow = parseBigIntString(body.maxEscrow, 'max escrow')
+    const paymentTransactionHash = parseHex32(body.paymentTransactionHash, 'payment transaction hash')
+
+    await verifyEscrowPayment({
+      buyer,
+      chainId: deployment.chainId,
+      maxEscrow,
+      orderId: orderId as Hex,
+      paymentTransactionHash,
+      railId: deployment.railId,
     })
 
-    const client = getTempoClient(deployment.chainId)
-    let processTransactionHash: Hex | undefined
+    const epochId = await readCurrentEpochId(deployment.chainId, deployment.railId)
+    const seed = deriveEpochSeed(deployment, epochId)
+    const data = encodeFunctionData({
+      abi: maybePayStoreAbi,
+      args: [
+        orderId as Hex,
+        buyer,
+        BigInt(productId),
+        payProbabilityBps,
+        maxEscrow,
+        paymentTransactionHash,
+        seed,
+      ],
+      functionName: 'processPaidOrder',
+    })
+
+    const client = getTempoClient(deployment.chainId, deployment.railId)
+    let processTransactionHash: Hex
     try {
       const receipt = await client.sendTransactionSync({
         calls: [{ data, to: deployment.store }],
@@ -110,16 +219,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       } as never)
       processTransactionHash = receipt.transactionHash as Hex
     } catch (error) {
-      const reread = await readOrder(deployment.chainId, orderId as Hex)
-      const status = orderStatusName(reread.status)
-      if (status !== 'paid' && status !== 'free') throw error
+      if (!(await readProcessedOrder(deployment.chainId, orderId as Hex, deployment.railId))) throw error
+      return new NextResponse('Order is already processed', { status: 409 })
     }
 
-    const after = await readOrder(deployment.chainId, orderId as Hex)
+    const processReceipt = (await client.request({
+      method: 'eth_getTransactionReceipt',
+      params: [processTransactionHash],
+    })) as TempoRpcReceipt
+    const event = decodeResolvedOrderEvent(processReceipt, deployment.store)
 
-    await ensureEpoch(deployment.chainId).catch(() => undefined)
+    await ensureEpoch(deployment.chainId, deployment.railId).catch(() => undefined)
 
-    return buildResolvedResponse(deployment, orderId as Hex, after, processTransactionHash)
+    return buildResolvedResponse({
+      deployment,
+      epochId,
+      event,
+      maxEscrow,
+      orderId: orderId as Hex,
+      payProbabilityBps,
+      processTransactionHash,
+    })
   } catch (error) {
     return new NextResponse(error instanceof Error ? error.message : 'Failed to process order', { status: 500 })
   }

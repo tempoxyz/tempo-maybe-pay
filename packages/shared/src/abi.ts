@@ -50,27 +50,15 @@ export const maybePayStoreAbi = [
       { name: 'commitment', type: 'bytes32' },
       { name: 'openedAt', type: 'uint64' },
       { name: 'revealDeadline', type: 'uint64' },
-      { name: 'orderId', type: 'bytes32' },
       { name: 'revealed', type: 'bool' },
     ],
   },
   {
     type: 'function',
-    name: 'orders',
+    name: 'processedOrders',
     stateMutability: 'view',
     inputs: [{ name: 'orderId', type: 'bytes32' }],
-    outputs: [
-      { name: 'buyer', type: 'address' },
-      { name: 'productId', type: 'uint256' },
-      { name: 'epochId', type: 'uint256' },
-      { name: 'basePrice', type: 'uint256' },
-      { name: 'maxEscrow', type: 'uint256' },
-      { name: 'payProbabilityBps', type: 'uint16' },
-      { name: 'metadataHash', type: 'bytes32' },
-      { name: 'status', type: 'uint8' },
-      { name: 'roll', type: 'uint256' },
-      { name: 'tokenId', type: 'uint256' },
-    ],
+    outputs: [{ type: 'bool' }],
   },
   {
     type: 'function',
@@ -119,22 +107,15 @@ export const maybePayStoreAbi = [
   },
   {
     type: 'function',
-    name: 'placeOrder',
+    name: 'processPaidOrder',
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'orderId', type: 'bytes32' },
+      { name: 'buyer', type: 'address' },
       { name: 'productId', type: 'uint256' },
       { name: 'payProbabilityBps', type: 'uint16' },
-      { name: 'metadataHash', type: 'bytes32' },
-    ],
-    outputs: [{ name: 'maxEscrow', type: 'uint256' }],
-  },
-  {
-    type: 'function',
-    name: 'processOrder',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'orderId', type: 'bytes32' },
+      { name: 'maxEscrow', type: 'uint256' },
+      { name: 'paymentTxHash', type: 'bytes32' },
       { name: 'seed', type: 'bytes32' },
     ],
     outputs: [
@@ -151,6 +132,16 @@ export const maybePayStoreAbi = [
   },
   {
     type: 'function',
+    name: 'redeemFor',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'tokenId', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
     name: 'expireRedemption',
     stateMutability: 'nonpayable',
     inputs: [{ name: 'tokenId', type: 'uint256' }],
@@ -158,17 +149,19 @@ export const maybePayStoreAbi = [
   },
   {
     type: 'event',
-    name: 'OrderResolved',
+    name: 'PaymentOrderResolved',
     inputs: [
       { name: 'orderId', type: 'bytes32', indexed: true },
       { name: 'buyer', type: 'address', indexed: true },
       { name: 'tokenId', type: 'uint256', indexed: true },
       { name: 'status', type: 'uint8' },
+      { name: 'productId', type: 'uint256' },
       { name: 'roll', type: 'uint256' },
       { name: 'paidAmount', type: 'uint256' },
       { name: 'refundedAmount', type: 'uint256' },
       { name: 'redeemValue', type: 'uint256' },
       { name: 'redeemDeadline', type: 'uint64' },
+      { name: 'paymentTxHash', type: 'bytes32' },
     ],
   },
 ] as const
@@ -193,6 +186,17 @@ export const tip20Abi = [
   },
   {
     type: 'function',
+    name: 'transferWithMemo',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'memo', type: 'bytes32' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
     name: 'approve',
     stateMutability: 'nonpayable',
     inputs: [
@@ -206,20 +210,10 @@ export const tip20Abi = [
 export const maybePayNftAbi = [
   {
     type: 'function',
-    name: 'getApproved',
+    name: 'balanceOf',
     stateMutability: 'view',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [{ type: 'address' }],
-  },
-  {
-    type: 'function',
-    name: 'isApprovedForAll',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'operator', type: 'address' },
-    ],
-    outputs: [{ type: 'bool' }],
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ type: 'uint256' }],
   },
   {
     type: 'function',
@@ -251,22 +245,9 @@ export const maybePayNftAbi = [
   },
   {
     type: 'function',
-    name: 'approve',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'approved', type: 'address' },
-      { name: 'tokenId', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-  {
-    type: 'function',
-    name: 'setApprovalForAll',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'operator', type: 'address' },
-      { name: 'approved', type: 'bool' },
-    ],
-    outputs: [],
+    name: 'nextTokenId',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
   },
 ] as const

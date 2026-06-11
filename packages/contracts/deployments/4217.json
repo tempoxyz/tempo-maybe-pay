@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "chainId": 42431,
-  "rpcUrl": "https://rpc.testnet.tempo.xyz",
+  "chainId": 4217,
+  "rpcUrl": "https://rpc.tempo.xyz",
   "paymentToken": "0x20c0000000000000000000000000000000000000",
   "merchant": "0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4",
   "deployer": "0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4",
   "operator": "0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4",
-  "nft": "0x47926a61023B4A99de3F8958b4F168e8aB868Ee3",
-  "store": "0x50Fe68c6BF1FC8311252F86701A54F6C753D691D",
-  "houseBankrollAmount": "500000000",
-  "deployedAt": "2026-06-05T14:35:14Z"
+  "nft": "0x33D45470110aA62F06D97588205fe413a44eFE44",
+  "store": "0x567A1CBdb1fb304c799d1130f3675B58E923e2C6",
+  "houseBankrollAmount": "0",
+  "deployedAt": "2026-06-05T14:37:59Z"
 }

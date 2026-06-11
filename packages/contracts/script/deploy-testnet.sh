@@ -18,7 +18,10 @@ if [[ -z "$OPERATOR_PRIVATE_KEY" ]]; then
 fi
 
 RPC_URL="${TEMPO_RPC_URL:-${TEMPO_TESTNET_RPC_URL:-https://rpc.testnet.tempo.xyz}}"
-FEE_TOKEN="${PATHUSD_ADDRESS:-0x20c0000000000000000000000000000000000000}"
+PAYMENT_RAIL_ID="${PAYMENT_RAIL_ID:-pathusd}"
+PAYMENT_TOKEN="${PAYMENT_TOKEN_ADDRESS:-${PAYMENT_TOKEN:-${PATHUSD_ADDRESS:-0x20c0000000000000000000000000000000000000}}}"
+PAYMENT_TOKEN_SYMBOL="${PAYMENT_TOKEN_SYMBOL:-pathUSD}"
+FEE_TOKEN="${FEE_TOKEN_ADDRESS:-${FEE_TOKEN:-$PAYMENT_TOKEN}}"
 MERCHANT="${MERCHANT_ADDRESS:-$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")}"
 DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
 OPERATOR="${OPERATOR_ADDRESS:-$(cast wallet address --private-key "$OPERATOR_PRIVATE_KEY")}"
@@ -26,7 +29,7 @@ CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL")"
 METADATA_BASE_URL="${METADATA_BASE_URL:-https://tempo-maybe-pay.vercel.app}"
 HOUSE_BANKROLL_AMOUNT="${HOUSE_BANKROLL_AMOUNT:-0}"
 OUT_DIR="$ROOT_DIR/deployments"
-OUT_FILE="$OUT_DIR/$CHAIN_ID.json"
+OUT_FILE="$OUT_DIR/$CHAIN_ID-$PAYMENT_RAIL_ID.json"
 
 mkdir -p "$OUT_DIR"
 
@@ -54,47 +57,61 @@ echo "Deploying Tempo Maybe Pay to chain $CHAIN_ID"
 echo "Deployer: $DEPLOYER"
 echo "Operator: $OPERATOR"
 echo "Merchant: $MERCHANT"
-echo "House bankroll seed: $HOUSE_BANKROLL_AMOUNT pathUSD base units"
+echo "Payment rail: $PAYMENT_RAIL_ID"
+echo "Payment token: $PAYMENT_TOKEN_SYMBOL $PAYMENT_TOKEN"
+echo "Transaction fee token: $FEE_TOKEN"
+echo "House bankroll seed: $HOUSE_BANKROLL_AMOUNT $PAYMENT_TOKEN_SYMBOL base units"
 
-NFT_JSON="$(deploy_contract src/TempoMaybePayNFT.sol:TempoMaybePayNFT --constructor-args "Tempo Maybe Pay" "TMP" "$DEPLOYER")"
+NFT_JSON="$(
+  deploy_contract src/TempoMaybePayNFTV2.sol:TempoMaybePayNFTV2 \
+    --constructor-args "Tempo Maybe Pay" "TMP" "$METADATA_BASE_URL/api/metadata/$CHAIN_ID/" "$DEPLOYER"
+)"
 NFT_ADDRESS="$(printf '%s' "$NFT_JSON" | jq -r '.deployedTo')"
 echo "NFT: $NFT_ADDRESS"
 
-STORE_JSON="$(deploy_contract src/TempoMaybePayStore.sol:TempoMaybePayStore --constructor-args "$FEE_TOKEN" "$NFT_ADDRESS" "$MERCHANT" "$DEPLOYER")"
+STORE_JSON="$(
+  deploy_contract src/TempoMaybePayStoreV2.sol:TempoMaybePayStoreV2 \
+    --constructor-args "$PAYMENT_TOKEN" "$NFT_ADDRESS" "$MERCHANT" "$DEPLOYER"
+)"
 STORE_ADDRESS="$(printf '%s' "$STORE_JSON" | jq -r '.deployedTo')"
 echo "Store: $STORE_ADDRESS"
 
 send_tx "$NFT_ADDRESS" "setStore(address)" "$STORE_ADDRESS"
 send_tx "$STORE_ADDRESS" "setProcessor(address,bool)" "$OPERATOR" true
 
-PRODUCTS=(
-  "1|Tempo Hoodie|42000000|500"
-  "2|Ceramic Mug|8000000|750"
-  "3|Desk Mat|18000000|500"
-  "4|Canvas Tote|14000000|800"
-  "5|Notebook Pack|12500000|1000"
-  "6|Stainless Bottle|22000000|600"
-  "7|Mechanical Keyboard|64000000|250"
-  "8|Desk Lamp|35000000|350"
-  "9|Gift Card|25000000|1000"
-  "10|Sticker Sheet|3500000|2000"
-)
+if [[ "$CHAIN_ID" == "4217" ]]; then
+  PRODUCTS=(
+    "1|Tempo Flight Pass|1000|10000"
+    "2|Tempo Dollar Lane|10000|5000"
+    "3|Tempo Treasury Bag|100000|1000"
+  )
+else
+  PRODUCTS=(
+    "1|Tempo Flight Pass|1000000|10000"
+    "2|Tempo Dollar Lane|10000000|5000"
+    "3|Tempo Treasury Bag|100000000|1000"
+  )
+fi
 
 for product in "${PRODUCTS[@]}"; do
   IFS="|" read -r id name price max_supply <<<"$product"
-  send_tx "$STORE_ADDRESS" "setProduct(uint256,string,uint256,uint256,bool,string)" \
-    "$id" "$name" "$price" "$max_supply" true "$METADATA_BASE_URL/api/metadata/$CHAIN_ID/$id"
+  echo "Configuring product $id: $name"
+  send_tx "$STORE_ADDRESS" "setProduct(uint256,uint256,uint256,bool)" "$id" "$price" "$max_supply" true
 done
 
 if [[ "$HOUSE_BANKROLL_AMOUNT" != "0" ]]; then
-  send_tx "$FEE_TOKEN" "transfer(address,uint256)" "$STORE_ADDRESS" "$HOUSE_BANKROLL_AMOUNT"
+  send_tx "$PAYMENT_TOKEN" "transfer(address,uint256)" "$STORE_ADDRESS" "$HOUSE_BANKROLL_AMOUNT"
 fi
 
 cat > "$OUT_FILE" <<JSON
 {
+  "version": 2,
   "chainId": $CHAIN_ID,
+  "paymentRailId": "$PAYMENT_RAIL_ID",
   "rpcUrl": "$RPC_URL",
-  "paymentToken": "$FEE_TOKEN",
+  "paymentToken": "$PAYMENT_TOKEN",
+  "paymentTokenSymbol": "$PAYMENT_TOKEN_SYMBOL",
+  "feeToken": "$FEE_TOKEN",
   "merchant": "$MERCHANT",
   "deployer": "$DEPLOYER",
   "operator": "$OPERATOR",

@@ -1,21 +1,157 @@
 import {
   getDeployment,
+  tip20Abi,
   maybePayNftAbi,
   maybePayStoreAbi,
   normalizeChainId,
   type ChainId,
   type Deployment,
 } from '@tempo-maybe-pay/shared'
-import { createClient, encodeAbiParameters, encodeFunctionData, http, keccak256, publicActions, walletActions, type Hex } from 'viem'
+import {
+  createClient,
+  decodeEventLog,
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeFunctionData,
+  getAddress,
+  http,
+  isAddress,
+  isHex,
+  keccak256,
+  publicActions,
+  walletActions,
+  type Hex,
+  type Log,
+} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { tempo, tempoModerato } from 'viem/chains'
 import { tempoActions } from 'viem/tempo'
 
-const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000'
-
-type EpochTuple = readonly [Hex, bigint, bigint, Hex, boolean]
-type OrderTuple = readonly [Hex, bigint, bigint, bigint, bigint, number, Hex, number, bigint, bigint]
+type EpochTuple = readonly [Hex, bigint, bigint, boolean]
 type RedemptionTuple = readonly [bigint, bigint, boolean]
+type TempoRpcCall = {
+  to?: Hex
+  input?: Hex
+  data?: Hex | null
+}
+type TempoRpcTransaction = {
+  from?: Hex
+  to?: Hex | null
+  input?: Hex
+  data?: Hex | null
+  calls?: readonly TempoRpcCall[]
+}
+type TempoRpcReceipt = {
+  logs?: readonly Log[]
+  status?: Hex | 'success' | boolean
+}
+
+const transferWithMemoEventAbi = [
+  {
+    type: 'event',
+    name: 'TransferWithMemo',
+    inputs: [
+      { name: 'from', type: 'address', indexed: true },
+      { name: 'to', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'memo', type: 'bytes32', indexed: true },
+    ],
+  },
+] as const
+
+function sameAddress(left: string, right: string): boolean {
+  if (!isAddress(left) || !isAddress(right)) return false
+  return getAddress(left) === getAddress(right)
+}
+
+function receiptSucceeded(status: TempoRpcReceipt['status']): boolean {
+  return status === '0x1' || status === 'success' || status === true
+}
+
+function receiptHasEscrowTransfer({
+  buyer,
+  deployment,
+  maxEscrow,
+  orderId,
+  receipt,
+}: {
+  buyer: Hex
+  deployment: Deployment
+  maxEscrow: bigint
+  orderId: Hex
+  receipt: TempoRpcReceipt
+}): boolean {
+  if (!deployment.store) return false
+
+  for (const log of receipt.logs ?? []) {
+    if (!sameAddress(log.address, deployment.paymentToken)) continue
+
+    try {
+      const decoded = decodeEventLog({
+        abi: transferWithMemoEventAbi,
+        data: log.data,
+        topics: log.topics,
+      })
+      if (decoded.eventName !== 'TransferWithMemo') continue
+
+      const args = decoded.args
+      if (
+        sameAddress(args.from, buyer) &&
+        sameAddress(args.to, deployment.store) &&
+        args.amount === maxEscrow &&
+        args.memo.toLowerCase() === orderId.toLowerCase()
+      ) {
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return false
+}
+
+function transactionCallsEscrow({
+  deployment,
+  maxEscrow,
+  orderId,
+  transaction,
+}: {
+  deployment: Deployment
+  maxEscrow: bigint
+  orderId: Hex
+  transaction: TempoRpcTransaction
+}): boolean {
+  if (!deployment.store) return false
+
+  const calls =
+    transaction.calls && transaction.calls.length > 0
+      ? transaction.calls
+      : [{ to: transaction.to ?? undefined, input: transaction.input ?? transaction.data ?? undefined }]
+
+  for (const call of calls) {
+    const data = call.input ?? call.data ?? undefined
+    if (!call.to || !data || !sameAddress(call.to, deployment.paymentToken)) continue
+
+    try {
+      const decoded = decodeFunctionData({ abi: tip20Abi, data })
+      if (decoded.functionName !== 'transferWithMemo') continue
+
+      const [to, amount, memo] = decoded.args
+      if (
+        sameAddress(to, deployment.store) &&
+        amount === maxEscrow &&
+        String(memo).toLowerCase() === orderId.toLowerCase()
+      ) {
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return false
+}
 
 function getOperatorPrivateKey(): Hex {
   const key = process.env.MAYBEPAY_PROCESSOR_PRIVATE_KEY ?? process.env.OPERATOR_PRIVATE_KEY
@@ -34,14 +170,24 @@ function getSeedSecret(): Hex {
 }
 
 export function getServerDeployment(chainIdInput: string | number | null | undefined): Deployment {
-  const deployment = getDeployment(chainIdInput)
-  if (!deployment.store) throw new Error(`${deployment.name} store is not deployed yet`)
+  return getServerRailDeployment(chainIdInput, undefined)
+}
+
+export function getServerRailDeployment(
+  chainIdInput: string | number | null | undefined,
+  railIdInput: string | null | undefined,
+): Deployment {
+  const deployment = getDeployment(chainIdInput, railIdInput)
+  if (!deployment.store) throw new Error(`${deployment.name} ${deployment.symbol} store is not deployed yet`)
   return deployment
 }
 
-export function getTempoClient(chainIdInput: string | number | null | undefined) {
+export function getTempoClient(
+  chainIdInput: string | number | null | undefined,
+  railIdInput?: string | null | undefined,
+) {
   const chainId = normalizeChainId(chainIdInput)
-  const deployment = getServerDeployment(chainId)
+  const deployment = getServerRailDeployment(chainId, railIdInput)
   const chain = chainId === 4217 ? tempo : tempoModerato
   const rpcUrl =
     chainId === 4217
@@ -63,6 +209,55 @@ export function getTempoClient(chainIdInput: string | number | null | undefined)
     .extend(tempoActions())
 }
 
+export async function verifyEscrowPayment({
+  buyer,
+  chainId,
+  maxEscrow,
+  orderId,
+  paymentTransactionHash,
+  railId,
+}: {
+  buyer: Hex
+  chainId: ChainId
+  maxEscrow: bigint
+  orderId: Hex
+  paymentTransactionHash: Hex
+  railId?: string | null
+}) {
+  const deployment = getServerRailDeployment(chainId, railId)
+  if (!deployment.store) throw new Error('Store is not deployed')
+  if (!isHex(paymentTransactionHash, { strict: true }) || paymentTransactionHash.length !== 66) {
+    throw new Error('Invalid payment transaction hash')
+  }
+
+  const client = getTempoClient(chainId, railId)
+  const [transaction, receipt] = await Promise.all([
+    client.request({
+      method: 'eth_getTransactionByHash',
+      params: [paymentTransactionHash],
+    }) as Promise<TempoRpcTransaction | null>,
+    client.request({
+      method: 'eth_getTransactionReceipt',
+      params: [paymentTransactionHash],
+    }) as Promise<TempoRpcReceipt | null>,
+  ])
+
+  if (!transaction || !receipt) throw new Error('Payment transaction was not found')
+  if (!receiptSucceeded(receipt.status)) throw new Error('Payment transaction did not succeed')
+  if (receiptHasEscrowTransfer({ buyer, deployment, maxEscrow, orderId, receipt })) {
+    return
+  }
+
+  if (!transaction.from || !sameAddress(transaction.from, buyer)) {
+    throw new Error('Payment transaction was not sent by the buyer wallet')
+  }
+  if (transactionCallsEscrow({ deployment, maxEscrow, orderId, transaction })) {
+    return
+  }
+
+  throw new Error(`Payment transaction did not escrow the expected ${deployment.symbol} with the order memo`)
+}
+
 export function deriveEpochSeed(deployment: Deployment, epochId: bigint): Hex {
   if (!deployment.store) throw new Error('Store is not deployed')
   return keccak256(
@@ -82,9 +277,12 @@ export function commitmentForSeed(seed: Hex): Hex {
   return keccak256(seed)
 }
 
-export async function ensureEpoch(chainIdInput: string | number | null | undefined) {
-  const deployment = getServerDeployment(chainIdInput)
-  const client = getTempoClient(deployment.chainId)
+export async function ensureEpoch(
+  chainIdInput: string | number | null | undefined,
+  railIdInput?: string | null | undefined,
+) {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
   const store = deployment.store
   if (!store) throw new Error('Store is not deployed')
 
@@ -101,8 +299,8 @@ export async function ensureEpoch(chainIdInput: string | number | null | undefin
       args: [currentEpochId],
       functionName: 'epochs',
     })) as EpochTuple
-    const [, , revealDeadline, orderId, revealed] = epoch
-    const hasOpenSlot = orderId === zeroBytes32 && !revealed && Number(revealDeadline) > Math.floor(Date.now() / 1000) + 60
+    const [, , revealDeadline, revealed] = epoch
+    const hasOpenSlot = !revealed && Number(revealDeadline) > Math.floor(Date.now() / 1000) + 60
     if (hasOpenSlot) {
       return { epochId: currentEpochId.toString(), opened: false }
     }
@@ -130,36 +328,47 @@ export async function ensureEpoch(chainIdInput: string | number | null | undefin
   }
 }
 
-export async function readOrder(chainIdInput: string | number | null | undefined, orderId: Hex) {
-  const deployment = getServerDeployment(chainIdInput)
-  const client = getTempoClient(deployment.chainId)
+export async function readCurrentEpochId(
+  chainIdInput: string | number | null | undefined,
+  railIdInput?: string | null | undefined,
+) {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
   const store = deployment.store
   if (!store) throw new Error('Store is not deployed')
 
-  const order = (await client.readContract({
+  return client.readContract({
+    abi: maybePayStoreAbi,
+    address: store,
+    functionName: 'currentEpochId',
+  }) as Promise<bigint>
+}
+
+export async function readProcessedOrder(
+  chainIdInput: string | number | null | undefined,
+  orderId: Hex,
+  railIdInput?: string | null | undefined,
+) {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
+  const store = deployment.store
+  if (!store) throw new Error('Store is not deployed')
+
+  return client.readContract({
     abi: maybePayStoreAbi,
     address: store,
     args: [orderId],
-    functionName: 'orders',
-  })) as OrderTuple
-
-  return {
-    buyer: order[0],
-    productId: order[1],
-    epochId: order[2],
-    basePrice: order[3],
-    maxEscrow: order[4],
-    payProbabilityBps: order[5],
-    metadataHash: order[6],
-    status: order[7],
-    roll: order[8],
-    tokenId: order[9],
-  }
+    functionName: 'processedOrders',
+  }) as Promise<boolean>
 }
 
-export async function readEpoch(chainIdInput: string | number | null | undefined, epochId: bigint) {
-  const deployment = getServerDeployment(chainIdInput)
-  const client = getTempoClient(deployment.chainId)
+export async function readEpoch(
+  chainIdInput: string | number | null | undefined,
+  epochId: bigint,
+  railIdInput?: string | null | undefined,
+) {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
   const store = deployment.store
   if (!store) throw new Error('Store is not deployed')
 
@@ -174,16 +383,20 @@ export async function readEpoch(chainIdInput: string | number | null | undefined
     commitment: epoch[0],
     openedAt: epoch[1],
     revealDeadline: epoch[2],
-    orderId: epoch[3],
-    revealed: epoch[4],
+    orderId: '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex,
+    revealed: epoch[3],
   }
 }
 
-export async function readNftOwner(chainIdInput: string | number | null | undefined, tokenId: bigint) {
-  const deployment = getServerDeployment(chainIdInput)
+export async function readNftOwner(
+  chainIdInput: string | number | null | undefined,
+  tokenId: bigint,
+  railIdInput?: string | null | undefined,
+) {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
   if (!deployment.nft) throw new Error(`${deployment.name} item token contract is not deployed yet`)
 
-  const client = getTempoClient(deployment.chainId)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
   return client.readContract({
     abi: maybePayNftAbi,
     address: deployment.nft,
@@ -192,9 +405,13 @@ export async function readNftOwner(chainIdInput: string | number | null | undefi
   }) as Promise<Hex>
 }
 
-export async function readRedemption(chainIdInput: string | number | null | undefined, tokenId: bigint) {
-  const deployment = getServerDeployment(chainIdInput)
-  const client = getTempoClient(deployment.chainId)
+export async function readRedemption(
+  chainIdInput: string | number | null | undefined,
+  tokenId: bigint,
+  railIdInput?: string | null | undefined,
+) {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
   const store = deployment.store
   if (!store) throw new Error('Store is not deployed')
 
@@ -212,9 +429,12 @@ export async function readRedemption(chainIdInput: string | number | null | unde
   }
 }
 
-export async function readHouseStats(chainIdInput: string | number | null | undefined) {
-  const deployment = getServerDeployment(chainIdInput)
-  const client = getTempoClient(deployment.chainId)
+export async function readHouseStats(
+  chainIdInput: string | number | null | undefined,
+  railIdInput?: string | null | undefined,
+) {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
   const store = deployment.store
   if (!store) throw new Error('Store is not deployed')
 
@@ -256,12 +476,4 @@ export async function readHouseStats(chainIdInput: string | number | null | unde
     outstandingLiability,
     pendingEscrow,
   }
-}
-
-export function orderStatusName(status: number): 'none' | 'pending' | 'paid' | 'free' | 'refunded' {
-  if (status === 1) return 'pending'
-  if (status === 2) return 'paid'
-  if (status === 3) return 'free'
-  if (status === 4) return 'refunded'
-  return 'none'
 }
