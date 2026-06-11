@@ -17,7 +17,7 @@ import {
   type ChainId,
   type Product,
 } from '@tempo-maybe-pay/shared'
-import { getAccessKeyAuthorization } from '@/app/lib/access-key'
+import { ensureTempoAccessKey, getAccessKeyAuthorization, type TempoAccessKeyProvider } from '@/app/lib/access-key'
 import { withNetworkFees } from '@/app/lib/network-fees'
 import { ArrowLeft, ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
 import Link from 'next/link'
@@ -35,7 +35,7 @@ import {
   useSwitchChain,
 } from 'wagmi'
 
-type Stage = 'idle' | 'epoch' | 'placing' | 'processing' | 'redeeming' | 'expiring' | 'resolved'
+type Stage = 'idle' | 'authorizing' | 'epoch' | 'placing' | 'processing' | 'redeeming' | 'expiring' | 'resolved'
 
 type ProcessResult = {
   basePrice: string
@@ -196,7 +196,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const deployment = getDeployment(selectedChainId, selectedRailId)
   const tokenSymbol = deployment.symbol
   const chainId = useChainId()
-  const { address, isConnected } = useAccount()
+  const { address, connector, isConnected } = useAccount()
   const { connectors, connectAsync, isPending: isConnecting } = useConnect()
   const { disconnect } = useDisconnect()
   const { switchChainAsync } = useSwitchChain()
@@ -355,6 +355,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const hasFunds = !address || balance >= maxEscrow
   const houseSolvent = !chainReady || availableReserve > 0n
   const busy =
+    stage === 'authorizing' ||
     stage === 'epoch' ||
     stage === 'placing' ||
     stage === 'processing' ||
@@ -505,6 +506,18 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
     try {
       if (!connectedToSelectedChain) {
         await switchChainAsync({ chainId: selectedChainId })
+      }
+
+      if (connector?.id === 'xyz.tempo' && connector.getProvider) {
+        setStage('authorizing')
+        const provider = (await connector.getProvider()) as TempoAccessKeyProvider
+        await ensureTempoAccessKey({
+          address,
+          chainId: selectedChainId,
+          provider,
+          railId: selectedRailId,
+          requestedLimit: maxEscrow,
+        })
       }
 
       setStage('epoch')
@@ -965,7 +978,9 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             onClick={() => void beginCheckout()}
           >
             {busy ? <RefreshCw className="spin" size={18} /> : <ShieldCheck size={18} />}
-            {stage === 'epoch'
+            {stage === 'authorizing'
+              ? 'Authorizing access key'
+              : stage === 'epoch'
               ? 'Opening committed epoch'
               : stage === 'placing'
                 ? 'Escrowing order'
