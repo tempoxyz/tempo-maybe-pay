@@ -45,6 +45,11 @@ type TempoRpcReceipt = {
   logs?: readonly Log[]
   status?: Hex | 'success' | boolean
 }
+type ExpireExpiredRedemptionsResult = {
+  checkedTokenCount: number
+  expiredTokenIds: string[]
+  transactionHash?: Hex
+}
 
 const transferWithMemoEventAbi = [
   {
@@ -475,5 +480,59 @@ export async function readHouseStats(
     bankroll,
     outstandingLiability,
     pendingEscrow,
+  }
+}
+
+export async function expireExpiredRedemptions(
+  chainIdInput: string | number | null | undefined,
+  railIdInput?: string | null | undefined,
+): Promise<ExpireExpiredRedemptionsResult> {
+  const deployment = getServerRailDeployment(chainIdInput, railIdInput)
+  const client = getTempoClient(deployment.chainId, deployment.railId)
+  const store = deployment.store
+  if (!store || !deployment.nft) throw new Error('Store is not deployed')
+
+  const nextTokenId = (await client.readContract({
+    abi: maybePayNftAbi,
+    address: deployment.nft,
+    functionName: 'nextTokenId',
+  })) as bigint
+  const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
+  const expiredTokenIds: bigint[] = []
+
+  for (let tokenId = 1n; tokenId < nextTokenId; tokenId += 1n) {
+    const [value, deadline, active] = (await client.readContract({
+      abi: maybePayStoreAbi,
+      address: store,
+      args: [tokenId],
+      functionName: 'redemptions',
+    })) as RedemptionTuple
+
+    if (active && value > 0n && deadline > 0n && deadline < nowSeconds) {
+      expiredTokenIds.push(tokenId)
+    }
+  }
+
+  if (expiredTokenIds.length === 0) {
+    return {
+      checkedTokenCount: Number(nextTokenId > 0n ? nextTokenId - 1n : 0n),
+      expiredTokenIds: [],
+    }
+  }
+
+  const data = encodeFunctionData({
+    abi: maybePayStoreAbi,
+    args: [expiredTokenIds],
+    functionName: 'expireRedemptions',
+  })
+  const receipt = await client.sendTransactionSync({
+    calls: [{ data, to: store }],
+    feeToken: deployment.paymentToken,
+  } as never)
+
+  return {
+    checkedTokenCount: Number(nextTokenId - 1n),
+    expiredTokenIds: expiredTokenIds.map((tokenId) => tokenId.toString()),
+    transactionHash: receipt.transactionHash as Hex,
   }
 }

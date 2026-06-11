@@ -148,6 +148,13 @@ export const maybePayStoreAbi = [
     outputs: [],
   },
   {
+    type: 'function',
+    name: 'expireRedemptions',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'tokenIds', type: 'uint256[]' }],
+    outputs: [],
+  },
+  {
     type: 'event',
     name: 'PaymentOrderResolved',
     inputs: [
