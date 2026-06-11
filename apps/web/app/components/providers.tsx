@@ -32,6 +32,7 @@ const wagmiConfig = createConfig({
   connectors: [
     tempoWallet({
       authorizeAccessKey: getAccessKeyAuthorization,
+      feePayer: 'https://sponsor.moderato.tempo.xyz',
       mpp: true,
       storage:
         typeof window === 'undefined'

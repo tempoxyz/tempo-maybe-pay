@@ -114,10 +114,11 @@ function formatTokenAmount(raw: string | bigint, symbol: string): string {
   return `${formatRawPathUsd(raw)} ${symbol}`
 }
 
-function withSelectedFeeToken(
+function withNetworkFees(
   args: Record<string, unknown>,
-  deployment: { paymentToken: Hex; railId: string },
+  deployment: { chainId: ChainId; paymentToken: Hex },
 ): Record<string, unknown> {
+  if (deployment.chainId === 42431) return { ...args, feePayer: true }
   return { ...args, feeToken: deployment.paymentToken }
 }
 
@@ -469,7 +470,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
 
       setStage('placing')
       const receipt = await sendTransactionSync.mutateAsync(
-        withSelectedFeeToken(
+        withNetworkFees(
           {
             calls: [{ data: escrowData, to: deployment.paymentToken }],
             chainId: selectedChainId,
@@ -531,7 +532,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         functionName: 'redeem',
       })
       const receipt = await sendTransactionSync.mutateAsync(
-        withSelectedFeeToken(
+        withNetworkFees(
           {
             calls: [{ data, to: deployment.store }],
             chainId: selectedChainId,
@@ -575,7 +576,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         functionName: 'expireRedemption',
       })
       const receipt = await sendTransactionSync.mutateAsync({
-        ...withSelectedFeeToken(
+        ...withNetworkFees(
           {
             calls: [{ data, to: deployment.store }],
             chainId: selectedChainId,
