@@ -22,7 +22,7 @@ import { withNetworkFees } from '@/app/lib/network-fees'
 import { ArrowLeft, ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { encodeFunctionData, zeroAddress, type Hex } from 'viem'
 import {
   useAccount,
@@ -211,7 +211,9 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const [placeTransactionHash, setPlaceTransactionHash] = useState<Hex | undefined>()
   const [redemptionTransactionHash, setRedemptionTransactionHash] = useState<Hex | undefined>()
   const [result, setResult] = useState<ProcessResult | undefined>()
+  const [isReleasingExpiredHouseClaims, setIsReleasingExpiredHouseClaims] = useState(false)
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
+  const expiredHouseClaimsAttempts = useRef(new Set<string>())
 
   useEffect(() => {
     const interval = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 1000)
@@ -345,6 +347,10 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   const outstandingLiability =
     typeof outstandingLiabilityQuery.data === 'bigint' ? outstandingLiabilityQuery.data : 0n
   const pendingEscrow = typeof pendingEscrowQuery.data === 'bigint' ? pendingEscrowQuery.data : 0n
+  const maxProductRedeemValue = products.reduce((maxValue, item) => {
+    const itemRedeemValue = quoteRedeemValue(getProductPrice(item, selectedChainId))
+    return itemRedeemValue > maxValue ? itemRedeemValue : maxValue
+  }, 0n)
   const canUnderwrite = !chainReady || availableReserve >= redeemValue
   const hasFunds = !address || balance >= maxEscrow
   const houseSolvent = !chainReady || availableReserve > 0n
@@ -419,6 +425,59 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
       ownedClaimsQuery.refetch(),
     ])
   }
+
+  useEffect(() => {
+    if (
+      !chainReady ||
+      selectedChainId !== 42431 ||
+      outstandingLiability === 0n ||
+      availableReserve >= maxProductRedeemValue
+    ) {
+      return
+    }
+
+    const attemptKey = `${selectedChainId}:${selectedRailId}:${outstandingLiability.toString()}:${Math.floor(
+      nowSeconds / 60,
+    )}`
+    if (expiredHouseClaimsAttempts.current.has(attemptKey)) return
+    expiredHouseClaimsAttempts.current.add(attemptKey)
+
+    let cancelled = false
+
+    async function releaseExpiredHouseClaims() {
+      setIsReleasingExpiredHouseClaims(true)
+      try {
+        const response = await fetch(
+          `/api/redemptions/expire-expired?chainId=${selectedChainId}&rail=${selectedRailId}`,
+          { cache: 'no-store', method: 'POST' },
+        )
+        if (!response.ok) throw new Error(await response.text())
+        if (!cancelled) await refetchLiveData()
+      } catch (caught) {
+        if (!cancelled && !canUnderwrite) {
+          const message = caught instanceof Error ? caught.message : 'Could not release expired house claims.'
+          setError(`Expired claims are still locking house bankroll: ${message}`)
+        }
+      } finally {
+        if (!cancelled) setIsReleasingExpiredHouseClaims(false)
+      }
+    }
+
+    void releaseExpiredHouseClaims()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    availableReserve,
+    canUnderwrite,
+    chainReady,
+    maxProductRedeemValue,
+    nowSeconds,
+    outstandingLiability,
+    selectedChainId,
+    selectedRailId,
+  ])
 
   async function beginCheckout() {
     if (!address) {
@@ -894,6 +953,9 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           {error ? <div className="error">{error}</div> : null}
           {!canUnderwrite && chainReady ? (
             <div className="error">The house cannot underwrite this NFT right now. Smaller items may still work.</div>
+          ) : null}
+          {isReleasingExpiredHouseClaims ? (
+            <div className="notice">Releasing expired claims to unlock house bankroll...</div>
           ) : null}
 
           <button
