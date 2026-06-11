@@ -18,6 +18,7 @@ import {
   type Product,
 } from '@tempo-maybe-pay/shared'
 import { getAccessKeyAuthorization } from '@/app/lib/access-key'
+import { withNetworkFees } from '@/app/lib/network-fees'
 import { ArrowLeft, ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -112,14 +113,6 @@ function formatRawPathUsd(raw: string | bigint): string {
 
 function formatTokenAmount(raw: string | bigint, symbol: string): string {
   return `${formatRawPathUsd(raw)} ${symbol}`
-}
-
-function withNetworkFees(
-  args: Record<string, unknown>,
-  deployment: { chainId: ChainId; paymentToken: Hex },
-): Record<string, unknown> {
-  if (deployment.chainId === 42431) return { ...args, feePayer: true }
-  return { ...args, feeToken: deployment.paymentToken }
 }
 
 function withConnectAccessKey(

@@ -6,6 +6,7 @@
     "build": "next build",
     "check": "tsc --noEmit",
     "dev": "next dev",
+    "test": "node --test app/lib/network-fees.test.mjs",
     "start": "next start"
   },
   "dependencies": {
