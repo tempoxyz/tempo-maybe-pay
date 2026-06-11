@@ -68,12 +68,6 @@ type ProcessResult = {
   tokenId: string
 }
 
-type RedeemResult = {
-  owner: Hex
-  redemptionTransactionHash: Hex
-  tokenId: string
-}
-
 type OwnedClaim = {
   tokenId: bigint
   productId?: bigint
@@ -531,16 +525,25 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         await switchChainAsync({ chainId: selectedChainId })
       }
 
-      const redeemResponse = await fetch(`/api/tokens/${tokenId.toString()}/redeem?chainId=${selectedChainId}&rail=${selectedRailId}`, {
-        body: JSON.stringify({ owner: address }),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        method: 'POST',
+      const data = encodeFunctionData({
+        abi: maybePayStoreAbi,
+        args: [tokenId],
+        functionName: 'redeem',
       })
-      if (!redeemResponse.ok) throw new Error(await redeemResponse.text())
-      const redeemed = (await redeemResponse.json()) as RedeemResult
-      setRedemptionTransactionHash(redeemed.redemptionTransactionHash)
+      const receipt = await sendTransactionSync.mutateAsync(
+        withSelectedFeeToken(
+          {
+            calls: [{ data, to: deployment.store }],
+            chainId: selectedChainId,
+            from: address,
+          },
+          deployment,
+        ),
+      )
+      const hash = receipt.transactionHash ?? receipt.hash
+      if (!hash) throw new Error('Wallet did not return a redemption transaction hash')
+      if (receiptFailed(receipt.status)) throw new Error('Redemption transaction failed.')
+      setRedemptionTransactionHash(hash)
       setResult((current) =>
         current?.tokenId === tokenId.toString() ? { ...current, redeemActive: false } : current,
       )
@@ -576,6 +579,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           {
             calls: [{ data, to: deployment.store }],
             chainId: selectedChainId,
+            from: address,
           },
           deployment,
         ),
