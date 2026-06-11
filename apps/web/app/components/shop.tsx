@@ -17,6 +17,7 @@ import {
   type ChainId,
   type Product,
 } from '@tempo-maybe-pay/shared'
+import { getAccessKeyAuthorization } from '@/app/lib/access-key'
 import { ArrowLeft, ArrowRight, Banknote, CheckCircle2, Clock3, ExternalLink, Flame, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -123,7 +124,20 @@ function withSelectedFeeToken(
   args: Record<string, unknown>,
   deployment: { paymentToken: Hex; railId: string },
 ): Record<string, unknown> {
-  return deployment.railId === 'usdc' ? { ...args, feeToken: deployment.paymentToken } : args
+  return { ...args, feeToken: deployment.paymentToken }
+}
+
+function withConnectAccessKey(
+  args: Record<string, unknown>,
+  chainId: ChainId,
+  railId: 'pathusd' | 'usdc',
+): Record<string, unknown> {
+  return {
+    ...args,
+    capabilities: {
+      authorizeAccessKey: getAccessKeyAuthorization(chainId, railId),
+    },
+  }
 }
 
 function formatCountdown(deadline: bigint, nowSeconds: number): string {
@@ -465,6 +479,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
           {
             calls: [{ data: escrowData, to: deployment.paymentToken }],
             chainId: selectedChainId,
+            from: address,
           },
           deployment,
         ),
@@ -673,7 +688,14 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   disabled={isConnecting}
                   key={connector.uid}
                   type="button"
-                  onClick={() => void connectAsync({ chainId: selectedChainId, connector })}
+                  onClick={() => {
+                    const connectRequest = withConnectAccessKey(
+                      { chainId: selectedChainId, connector },
+                      selectedChainId,
+                      selectedRailId,
+                    )
+                    void connectAsync(connectRequest as never)
+                  }}
                 >
                   <Wallet size={17} />
                   {connector.name}
