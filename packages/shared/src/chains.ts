@@ -33,6 +33,10 @@ export const chainDeployments = {
     wsUrl: 'wss://rpc.tempo.xyz',
     explorerUrl: 'https://explore.tempo.xyz',
     paymentToken: '0x20c0000000000000000000000000000000000000',
+    store: '0x567A1CBdb1fb304c799d1130f3675B58E923e2C6',
+    nft: '0x33D45470110aA62F06D97588205fe413a44eFE44',
+    merchant: '0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4',
+    operator: '0xd39B4A4b4Ec6e07b6f9B72596D1541bC67F08fD4',
   },
 } as const satisfies Record<ChainId, Deployment>
 

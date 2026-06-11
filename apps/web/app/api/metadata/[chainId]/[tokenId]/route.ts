@@ -1,4 +1,4 @@
-import { getProduct } from '@tempo-maybe-pay/shared'
+import { getProduct, normalizeChainId } from '@tempo-maybe-pay/shared'
 import { NextResponse, type NextRequest } from 'next/server'
 
 type RouteContext = {
@@ -7,7 +7,7 @@ type RouteContext = {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const { chainId, tokenId } = await context.params
-  const product = getProduct(Number(tokenId))
+  const product = getProduct(Number(tokenId), normalizeChainId(chainId))
   if (!product) return new NextResponse('Not found', { status: 404 })
 
   return NextResponse.json({

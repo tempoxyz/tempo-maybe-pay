@@ -1,3 +1,5 @@
+import { normalizeChainId, type ChainId } from './chains'
+
 export type Product = {
   id: number
   name: string
@@ -11,7 +13,46 @@ export type Product = {
   accent: string
 }
 
-export const products = [
+const mainnetProducts = [
+  {
+    id: 1,
+    name: 'Tempo Flight Pass',
+    sku: 'TMP-FLY-01',
+    category: 'Tempo Low Tier',
+    tagline: 'A tiny claim with wings.',
+    description: 'A low-variance Tempo NFT for trying the house-bankroll game with a light checkout.',
+    basePrice: 1_000n,
+    maxSupply: 10_000,
+    image: '/products/payment-lane-pass.svg',
+    accent: '#4567d8',
+  },
+  {
+    id: 2,
+    name: 'Tempo Dollar Lane',
+    sku: 'TMP-DLR-02',
+    category: 'Tempo Mid Tier',
+    tagline: 'The clean middle lane.',
+    description: 'A mid-tier Tempo NFT for testing probabilistic settlement with meaningful variance.',
+    basePrice: 10_000n,
+    maxSupply: 5_000,
+    image: '/products/pathusd-proof.svg',
+    accent: '#198754',
+  },
+  {
+    id: 3,
+    name: 'Tempo Treasury Bag',
+    sku: 'TMP-BAG-03',
+    category: 'Tempo High Tier',
+    tagline: 'Try the house for size.',
+    description: 'A high-tier Tempo NFT for pushing the bankroll and making the cash-out window matter.',
+    basePrice: 100_000n,
+    maxSupply: 1_000,
+    image: '/products/maybepay-receipt.svg',
+    accent: '#a16207',
+  },
+] as const satisfies readonly Product[]
+
+const testnetProducts = [
   {
     id: 1,
     name: 'Tempo Hoodie',
@@ -134,8 +175,19 @@ export const products = [
   },
 ] as const satisfies readonly Product[]
 
-export function getProduct(productId: number): Product | undefined {
-  return products.find((product) => product.id === productId)
+export const productsByChain = {
+  4217: mainnetProducts,
+  42431: testnetProducts,
+} as const satisfies Record<ChainId, readonly Product[]>
+
+export const products = testnetProducts
+
+export function getProducts(chainId: string | number | null | undefined): readonly Product[] {
+  return productsByChain[normalizeChainId(chainId)]
+}
+
+export function getProduct(productId: number, chainId: string | number | null | undefined = 42431): Product | undefined {
+  return getProducts(chainId).find((product) => product.id === productId)
 }
 
 export function formatPathUsd(raw: bigint): string {

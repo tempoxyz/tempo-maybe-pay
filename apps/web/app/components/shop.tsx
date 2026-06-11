@@ -6,10 +6,11 @@ import {
   explorerTxUrl,
   formatPathUsd,
   getDeployment,
+  getProduct,
+  getProducts,
   maybePayNftAbi,
   maybePayStoreAbi,
   normalizeChainId,
-  products,
   quoteMaxEscrow,
   quoteRedeemValue,
   tip20Abi,
@@ -134,7 +135,15 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
   }, [])
 
   const isCheckoutPage = checkoutProductId !== undefined
-  const product = products.find((item) => item.id === (checkoutProductId ?? products[0].id)) ?? products[0]
+  const chainProducts = getProducts(selectedChainId)
+  const product = getProduct(checkoutProductId ?? chainProducts[0].id, selectedChainId) ?? chainProducts[0]
+
+  useEffect(() => {
+    if (isCheckoutPage && checkoutProductId !== product.id) {
+      router.replace(`/checkout/${product.id}?chainId=${selectedChainId}`)
+    }
+  }, [checkoutProductId, isCheckoutPage, product.id, router, selectedChainId])
+
   const maxEscrow = useMemo(
     () => quoteMaxEscrow(product.basePrice, payProbabilityBps),
     [payProbabilityBps, product.basePrice],
@@ -283,7 +292,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
     return ownedTokenIds.map((tokenId, index) => {
       const redemption = ownedClaimsQuery.data?.[index * 2]?.result as readonly [bigint, bigint, boolean] | undefined
       const tokenProductId = ownedClaimsQuery.data?.[index * 2 + 1]?.result as bigint | undefined
-      const claimProduct = products.find((item) => BigInt(item.id) === tokenProductId)
+      const claimProduct = chainProducts.find((item) => BigInt(item.id) === tokenProductId)
       const deadline = redemption?.[1] ?? 0n
       const active = redemption?.[2] ?? false
 
@@ -297,13 +306,14 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
         expired: active && deadline > 0n && Number(deadline) < nowSeconds,
       }
     })
-  }, [nowSeconds, ownedClaimsQuery.data, ownedTokenIds])
+  }, [chainProducts, nowSeconds, ownedClaimsQuery.data, ownedTokenIds])
   const activeClaims = ownedClaims.filter((claim) => claim.active && !claim.expired)
   const expiredClaims = ownedClaims.filter((claim) => claim.expired)
   const collectibleClaims = ownedClaims.filter((claim) => !claim.active)
 
   async function changeNetwork(nextChainId: ChainId) {
-    router.replace(isCheckoutPage ? `/checkout/${product.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`)
+    const nextProduct = getProduct(product.id, nextChainId) ?? getProducts(nextChainId)[0]
+    router.replace(isCheckoutPage ? `/checkout/${nextProduct.id}?chainId=${nextChainId}` : `/?chainId=${nextChainId}`)
     if (isConnected && chainId !== nextChainId) {
       await switchChainAsync({ chainId: nextChainId })
     }
@@ -515,7 +525,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   disabled={isConnecting}
                   key={connector.uid}
                   type="button"
-                  onClick={() => void connectAsync({ connector })}
+                  onClick={() => void connectAsync({ chainId: selectedChainId, connector })}
                 >
                   <Wallet size={17} />
                   {connector.name}
@@ -573,7 +583,9 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             <div>
               <h2>{isCheckoutPage ? product.name : 'Choose an item'}</h2>
             </div>
-            <span>{isCheckoutPage ? `${formatPathUsd(product.basePrice)} pathUSD` : `${products.length} items available`}</span>
+            <span>
+              {isCheckoutPage ? `${formatPathUsd(product.basePrice)} pathUSD` : `${chainProducts.length} items available`}
+            </span>
           </div>
           {isCheckoutPage ? (
             <div className="checkoutProduct">
@@ -603,7 +615,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
             </div>
           ) : (
             <div className="productGrid">
-              {products.map((item) => {
+              {chainProducts.map((item) => {
                 const itemRedeemValue = quoteRedeemValue(item.basePrice)
                 const productSolvent = !chainReady || availableReserve >= itemRedeemValue
 
