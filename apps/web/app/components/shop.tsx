@@ -673,7 +673,7 @@ export function Shop({ checkoutProductId }: ShopProps = {}) {
                   disabled={isConnecting}
                   key={connector.uid}
                   type="button"
-                  onClick={() => void connectAsync({ connector })}
+                  onClick={() => void connectAsync({ chainId: selectedChainId, connector })}
                 >
                   <Wallet size={17} />
                   {connector.name}
