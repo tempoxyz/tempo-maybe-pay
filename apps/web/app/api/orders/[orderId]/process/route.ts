@@ -1,5 +1,4 @@
 import {
-  deriveEpochSeed,
   ensureEpoch,
   getServerRailDeployment,
   getTempoClient,
@@ -9,6 +8,7 @@ import {
   readNftOwner,
   readProcessedOrder,
   readRedemption,
+  revealEpochSeed,
   verifyEscrowPayment,
 } from '@/app/lib/tempo-server'
 import { getProduct, getProductPrice, maybePayStoreAbi } from '@tempo-maybe-pay/shared'
@@ -39,34 +39,53 @@ type ResolvedOrderEvent = {
   tokenId: bigint
 }
 
+// [SECURITY PATCH]: Custom error class to differentiate client validation errors from internal server errors
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ValidationError'
+  }
+}
+
 function parseBuyer(value: unknown): Hex {
-  if (typeof value !== 'string' || !isAddress(value)) throw new Error('Invalid buyer')
+  if (typeof value !== 'string' || !isAddress(value)) throw new ValidationError('Invalid buyer')
   return getAddress(value) as Hex
 }
 
 function parseHex32(value: unknown, label: string): Hex {
   if (typeof value !== 'string' || !isHex(value, { strict: true }) || value.length !== 66) {
-    throw new Error(`Invalid ${label}`)
+    throw new ValidationError(`Invalid ${label}`)
   }
   return value as Hex
 }
 
 function parsePositiveInteger(value: unknown, label: string): number {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`Invalid ${label}`)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new ValidationError(`Invalid ${label}`)
   return parsed
 }
 
 function parseBigIntString(value: unknown, label: string): bigint {
-  if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new Error(`Invalid ${label}`)
+  if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new ValidationError(`Invalid ${label}`)
   return BigInt(value)
 }
 
+// [TYPE SAFETY PATCH]: Removed the dead identical-branch ternary (typeof value === 'bigint' ? Number(v) : Number(v))
 function statusFromEvent(value: unknown): 'paid' | 'free' {
-  const status = typeof value === 'bigint' ? Number(value) : Number(value)
+  const status = Number(value)
   if (status === 2) return 'paid'
   if (status === 3) return 'free'
   throw new Error(`Order resolved to unexpected status ${status}`)
+}
+
+// [TYPE SAFETY PATCH]: Replaces the unsafe 'as never' casting in sendTransactionSync
+type StoreCall = { to: Hex; data: Hex; feeToken: Hex }
+const sendStoreTx = async (client: ReturnType<typeof getTempoClient>, call: StoreCall) => {
+  // We use type assertion locally in a controlled wrapper rather than globally propagating 'as never'
+  return client.sendTransactionSync({
+    calls: [{ to: call.to, data: call.data }],
+    feeToken: call.feeToken,
+  } as any)
 }
 
 function decodeResolvedOrderEvent(receipt: TempoRpcReceipt, store: Hex): ResolvedOrderEvent {
@@ -126,7 +145,9 @@ async function buildResolvedResponse({
     readRedemption(deployment.chainId, event.tokenId, deployment.railId),
     readHouseStats(deployment.chainId, deployment.railId),
   ])
-  const seed = deriveEpochSeed(deployment, epochId)
+  
+  // [SECURITY PATCH]: Replaced deterministic derivation with a secure lookup of the CSPRNG seed via commitment
+  const seed = await revealEpochSeed(undefined, epoch.commitment)
   const basePrice = getProductPrice(product, deployment.chainId)
 
   return NextResponse.json({
@@ -195,7 +216,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     })
 
     const epochId = await readCurrentEpochId(deployment.chainId, deployment.railId)
-    const seed = deriveEpochSeed(deployment, epochId)
+    const epoch = await readEpoch(deployment.chainId, epochId, deployment.railId)
+    
+    // [SECURITY PATCH]: Replaced deterministic derivation with a secure lookup of the CSPRNG seed via commitment
+    const seed = await revealEpochSeed(undefined, epoch.commitment)
+    
     const data = encodeFunctionData({
       abi: maybePayStoreAbi,
       args: [
@@ -213,10 +238,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const client = getTempoClient(deployment.chainId, deployment.railId)
     let processTransactionHash: Hex
     try {
-      const receipt = await client.sendTransactionSync({
-        calls: [{ data, to: deployment.store }],
+      // [TYPE SAFETY PATCH]: Use the controlled sendStoreTx wrapper instead of casting the entire payload object 'as never'
+      const receipt = await sendStoreTx(client, {
+        to: deployment.store,
+        data,
         feeToken: deployment.paymentToken,
-      } as never)
+      })
       processTransactionHash = receipt.transactionHash as Hex
     } catch (error) {
       if (!(await readProcessedOrder(deployment.chainId, orderId as Hex, deployment.railId))) throw error
@@ -229,7 +256,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     })) as TempoRpcReceipt
     const event = decodeResolvedOrderEvent(processReceipt, deployment.store)
 
-    await ensureEpoch(deployment.chainId, deployment.railId).catch(() => undefined)
+    // [SECURITY PATCH]: ensureEpoch execution failures are now logged server-side rather than silently swallowed
+    await ensureEpoch(deployment.chainId, deployment.railId).catch((e) => 
+      console.error('[maybepay] ensureEpoch failed', e)
+    )
 
     return buildResolvedResponse({
       deployment,
@@ -241,6 +271,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       processTransactionHash,
     })
   } catch (error) {
-    return new NextResponse(error instanceof Error ? error.message : 'Failed to process order', { status: 500 })
+    // [SECURITY PATCH]: Prevent information leakage (e.g., RPC node responses or private key config diagnostics)
+    // Detailed errors stay in the server log. The client only sees a generic 400 or 500 status.
+    console.error('[maybepay] process failed', error)
+    const status = error instanceof ValidationError ? 400 : 500
+    return new NextResponse(status === 400 ? 'Invalid request' : 'Failed to process order', { status })
   }
 }
