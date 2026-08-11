@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import {
   getDeployment,
   tip20Abi,
@@ -166,14 +167,6 @@ function getOperatorPrivateKey(): Hex {
   return key as Hex
 }
 
-function getSeedSecret(): Hex {
-  const secret = process.env.MAYBEPAY_SEED_SECRET
-  if (!secret?.match(/^0x[0-9a-fA-F]{64}$/)) {
-    throw new Error('MAYBEPAY_SEED_SECRET is missing or invalid')
-  }
-  return secret as Hex
-}
-
 export function getServerDeployment(chainIdInput: string | number | null | undefined): Deployment {
   return getServerRailDeployment(chainIdInput, undefined)
 }
@@ -213,6 +206,13 @@ export function getTempoClient(
     .extend(walletActions)
     .extend(tempoActions())
 }
+
+type TempoClient = ReturnType<typeof getTempoClient>
+
+type StoreCall = { to: Hex; data: Hex; feeToken: Hex }
+
+const sendStoreTx = (client: TempoClient, call: StoreCall) =>
+  client.sendTransactionSync({ calls: [{ to: call.to, data: call.data }], feeToken: call.feeToken })
 
 export async function verifyEscrowPayment({
   buyer,
@@ -263,23 +263,53 @@ export async function verifyEscrowPayment({
   throw new Error(`Payment transaction did not escrow the expected ${deployment.symbol} with the order memo`)
 }
 
-export function deriveEpochSeed(deployment: Deployment, epochId: bigint): Hex {
-  if (!deployment.store) throw new Error('Store is not deployed')
-  return keccak256(
-    encodeAbiParameters(
-      [
-        { name: 'secret', type: 'bytes32' },
-        { name: 'chainId', type: 'uint256' },
-        { name: 'store', type: 'address' },
-        { name: 'epochId', type: 'uint256' },
-      ],
-      [getSeedSecret(), BigInt(deployment.chainId), deployment.store, epochId],
-    ),
-  )
+export interface SeedVault {
+  get(commitment: Hex): Promise<Hex | null>
+  put(commitment: Hex, seed: Hex): Promise<void>
+}
+
+const memoryVault = new Map<Hex, Hex>()
+
+export const defaultSeedVault: SeedVault = {
+  async get(commitment: Hex) {
+    return memoryVault.get(commitment) ?? null
+  },
+  async put(commitment: Hex, seed: Hex) {
+    memoryVault.set(commitment, seed)
+  },
 }
 
 export function commitmentForSeed(seed: Hex): Hex {
   return keccak256(seed)
+}
+
+export async function mintEpochSeed(vault: SeedVault = defaultSeedVault): Promise<{ seed: Hex; commitment: Hex }> {
+  const seed = `0x${randomBytes(32).toString('hex')}` as Hex
+  const commitment = commitmentForSeed(seed)
+  await vault.put(commitment, seed)
+  return { seed, commitment }
+}
+
+export async function revealEpochSeed(vault: SeedVault = defaultSeedVault, commitment: Hex): Promise<Hex> {
+  const seed = await vault.get(commitment)
+  if (!seed) throw new Error('unknown epoch commitment')
+  return seed
+}
+
+const epochLocks = new Map<string, Promise<unknown>>()
+
+async function withEpochLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prior = epochLocks.get(key) ?? Promise.resolve()
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  epochLocks.set(key, prior.then(() => gate))
+  await prior.catch(() => undefined)
+  try {
+    return await fn()
+  } finally {
+    release()
+    if (epochLocks.get(key) === gate) epochLocks.delete(key)
+  }
 }
 
 export async function ensureEpoch(
@@ -291,46 +321,50 @@ export async function ensureEpoch(
   const store = deployment.store
   if (!store) throw new Error('Store is not deployed')
 
-  const currentEpochId = (await client.readContract({
-    abi: maybePayStoreAbi,
-    address: store,
-    functionName: 'currentEpochId',
-  })) as bigint
+  const lockKey = `${deployment.chainId}-${deployment.railId ?? 'default'}`
 
-  if (currentEpochId > 0n) {
-    const epoch = (await client.readContract({
+  return withEpochLock(lockKey, async () => {
+    const currentEpochId = (await client.readContract({
       abi: maybePayStoreAbi,
       address: store,
-      args: [currentEpochId],
-      functionName: 'epochs',
-    })) as EpochTuple
-    const [, , revealDeadline, revealed] = epoch
-    const hasOpenSlot = !revealed && Number(revealDeadline) > Math.floor(Date.now() / 1000) + 60
-    if (hasOpenSlot) {
-      return { epochId: currentEpochId.toString(), opened: false }
+      functionName: 'currentEpochId',
+    })) as bigint
+
+    if (currentEpochId > 0n) {
+      const epoch = (await client.readContract({
+        abi: maybePayStoreAbi,
+        address: store,
+        args: [currentEpochId],
+        functionName: 'epochs',
+      })) as EpochTuple
+      const [, , revealDeadline, revealed] = epoch
+      const hasOpenSlot = !revealed && Number(revealDeadline) > Math.floor(Date.now() / 1000) + 60
+      if (hasOpenSlot) {
+        return { epochId: currentEpochId.toString(), opened: false }
+      }
     }
-  }
 
-  const nextEpochId = currentEpochId + 1n
-  const seed = deriveEpochSeed(deployment, nextEpochId)
-  const commitment = commitmentForSeed(seed)
-  const revealDeadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60)
-  const data = encodeFunctionData({
-    abi: maybePayStoreAbi,
-    args: [commitment, revealDeadline],
-    functionName: 'openEpoch',
+    const nextEpochId = currentEpochId + 1n
+    const { commitment } = await mintEpochSeed()
+    const revealDeadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60)
+    const data = encodeFunctionData({
+      abi: maybePayStoreAbi,
+      args: [commitment, revealDeadline],
+      functionName: 'openEpoch',
+    })
+
+    const receipt = await sendStoreTx(client, {
+      to: store,
+      data,
+      feeToken: deployment.paymentToken,
+    })
+
+    return {
+      epochId: nextEpochId.toString(),
+      opened: true,
+      transactionHash: receipt.transactionHash as Hex,
+    }
   })
-
-  const receipt = await client.sendTransactionSync({
-    calls: [{ data, to: store }],
-    feeToken: deployment.paymentToken,
-  } as never)
-
-  return {
-    epochId: nextEpochId.toString(),
-    opened: true,
-    transactionHash: receipt.transactionHash as Hex,
-  }
 }
 
 export async function readCurrentEpochId(
@@ -525,10 +559,12 @@ export async function expireExpiredRedemptions(
     args: [expiredTokenIds],
     functionName: 'expireRedemptions',
   })
-  const receipt = await client.sendTransactionSync({
-    calls: [{ data, to: store }],
+
+  const receipt = await sendStoreTx(client, {
+    to: store,
+    data,
     feeToken: deployment.paymentToken,
-  } as never)
+  })
 
   return {
     checkedTokenCount: Number(nextTokenId - 1n),

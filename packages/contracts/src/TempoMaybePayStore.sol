@@ -34,7 +34,7 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         bytes32 commitment;
         uint64 openedAt;
         uint64 revealDeadline;
-        bytes32 orderId;
+        bytes32 orderId; // Kept for storage layout backwards-compatibility, but no longer enforced as a singleton limit
         bool revealed;
     }
 
@@ -166,13 +166,9 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
     function openEpoch(bytes32 commitment, uint64 revealDeadline) external onlyProcessor returns (uint256 epochId) {
         if (commitment == bytes32(0) || revealDeadline <= block.timestamp) revert InvalidEpoch();
 
-        Epoch storage current = epochs[currentEpochId];
-        if (
-            currentEpochId != 0 && current.orderId != bytes32(0) && !current.revealed
-                && block.timestamp <= current.revealDeadline
-        ) {
-            revert EpochBusy();
-        }
+        // [PERFORMANCE / LIVENESS PATCH]: Removed the `EpochBusy` block.
+        // Previously, `epoch.orderId != 0` artificially limited the system to 1 order per epoch,
+        // freezing the store until reveal/deadline. We now allow N concurrent orders per epoch.
 
         epochId = ++currentEpochId;
         epochs[epochId] = Epoch({
@@ -293,18 +289,40 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         );
     }
 
-    function refundExpired(bytes32 orderId) external nonReentrant {
+    // [SECURITY PATCH]: resolveExpired completely replaces the old `refundExpired` function.
+    // Reveal-timeout now resolves to the buyer-favorable Free outcome. This neutralizes the 
+    // operator selective-abort vulnerability: censoring a would-be Free order yields Free anyway, 
+    // and censoring a Paid order yields the strictly-worse-for-house Free. Permissionless.
+    function resolveExpired(bytes32 orderId) external nonReentrant {
         Order storage order = orders[orderId];
         if (order.status != OrderStatus.Pending) revert OrderNotPending();
+
         Epoch storage epoch = epochs[order.epochId];
         if (block.timestamp <= epoch.revealDeadline) revert DeadlineNotPassed();
 
         Product storage product = products[order.productId];
         product.reserved -= 1;
         pendingEscrowTotal -= order.maxEscrow;
-        order.status = OrderStatus.Refunded;
+
+        // Effects: mirror the Free branch of processOrder (Checks-Effects-Interactions preserved).
+        order.status = OrderStatus.Free;
+        order.roll = order.payProbabilityBps; // sentinel: roll == prob => not-paid, deterministic on timeout
+
+        uint256 redeemValue = (order.basePrice * REDEEM_BPS) / BPS;
+        uint64 redeemDeadline = uint64(block.timestamp + REDEEM_WINDOW);
+
+        // Interactions.
         paymentToken.transferWithMemo(order.buyer, order.maxEscrow, orderId);
-        emit OrderRefunded(orderId, order.buyer, order.maxEscrow);
+        uint256 tokenId = _deliverNft(order.buyer, order.productId, product);
+        order.tokenId = tokenId;
+
+        redemptions[tokenId] = Redemption({value: redeemValue, deadline: redeemDeadline, active: true});
+        outstandingRedemptionLiability += redeemValue;
+
+        emit OrderResolved(
+            orderId, order.buyer, tokenId, OrderStatus.Free,
+            order.roll, 0, order.maxEscrow, redeemValue, redeemDeadline
+        );
     }
 
     function redeem(uint256 tokenId) external nonReentrant {
@@ -359,8 +377,11 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         if (orders[orderId].status != OrderStatus.None) revert OrderExists();
 
         Epoch storage epoch = epochs[currentEpochId];
+        
+        // [PERFORMANCE / LIVENESS PATCH]: Removed `epoch.orderId != bytes32(0)` singleton gate.
+        // `orderId` remains a roll input for domain separation, but is no longer restricted to 1 per epoch.
         if (
-            currentEpochId == 0 || epoch.commitment == bytes32(0) || epoch.revealed || epoch.orderId != bytes32(0)
+            currentEpochId == 0 || epoch.commitment == bytes32(0) || epoch.revealed
                 || block.timestamp > epoch.revealDeadline
         ) revert InvalidEpoch();
 
@@ -369,7 +390,6 @@ contract TempoMaybePayStore is Owned, ReentrancyGuard {
         if (availableHouseReserve() < (product.basePrice * REDEEM_BPS) / BPS) revert HouseBankrupt();
 
         product.reserved += 1;
-        epoch.orderId = orderId;
         pendingEscrowTotal += maxEscrow;
 
         orders[orderId] = Order({
