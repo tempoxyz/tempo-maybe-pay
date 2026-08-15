@@ -10,20 +10,20 @@
     "start": "next start"
   },
   "dependencies": {
-    "@tanstack/react-query": "latest",
+    "@tanstack/react-query": "^5.0.0",
     "@tempo-maybe-pay/shared": "workspace:*",
     "accounts": "0.12.2",
-    "lucide-react": "latest",
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "viem": "latest",
-    "wagmi": "latest"
+    "lucide-react": "^0.300.0",
+    "next": "14.2.14",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "viem": "^2.0.0",
+    "wagmi": "^2.0.0"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "typescript": "^5.9.3"
   }
 }
