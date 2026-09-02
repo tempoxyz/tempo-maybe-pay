@@ -1,3 +1,4 @@
+import { ApiError, apiErrorResponse, clientKeyFor, enforceRateLimit } from '@/app/lib/api-guard'
 import {
   deriveEpochSeed,
   ensureEpoch,
@@ -16,6 +17,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { decodeEventLog, encodeFunctionData, getAddress, isAddress, isHex, type Hex, type Log } from 'viem'
 
 export const runtime = 'nodejs'
+
+/**
+ * One checkout issues one call to this route, so the allowance only has to cover
+ * retries. Every call performs several RPC reads before it will sign anything.
+ */
+const RATE_LIMIT = 20
+const RATE_LIMIT_WINDOW_MS = 60_000
 
 type RouteContext = {
   params: Promise<{ orderId: string }> | { orderId: string }
@@ -40,25 +48,25 @@ type ResolvedOrderEvent = {
 }
 
 function parseBuyer(value: unknown): Hex {
-  if (typeof value !== 'string' || !isAddress(value)) throw new Error('Invalid buyer')
+  if (typeof value !== 'string' || !isAddress(value)) throw new ApiError('Invalid buyer')
   return getAddress(value) as Hex
 }
 
 function parseHex32(value: unknown, label: string): Hex {
   if (typeof value !== 'string' || !isHex(value, { strict: true }) || value.length !== 66) {
-    throw new Error(`Invalid ${label}`)
+    throw new ApiError(`Invalid ${label}`)
   }
   return value as Hex
 }
 
 function parsePositiveInteger(value: unknown, label: string): number {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`Invalid ${label}`)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new ApiError(`Invalid ${label}`)
   return parsed
 }
 
 function parseBigIntString(value: unknown, label: string): bigint {
-  if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new Error(`Invalid ${label}`)
+  if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new ApiError(`Invalid ${label}`)
   return BigInt(value)
 }
 
@@ -163,6 +171,14 @@ async function buildResolvedResponse({
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  // Callable without credentials by design: the browser calls it immediately
+  // after escrowing payment. Sponsorship is not unconditional — the handler
+  // verifies the escrow transfer on-chain and refuses already-processed orders
+  // before it signs anything — so the limiter exists to cap the RPC work an
+  // anonymous caller can force with deliberately unverifiable orders.
+  const limited = enforceRateLimit(`order-process:${clientKeyFor(request)}`, RATE_LIMIT, RATE_LIMIT_WINDOW_MS)
+  if (limited) return limited
+
   try {
     const { orderId } = await context.params
     if (!isHex(orderId, { strict: true }) || orderId.length !== 66) {
@@ -172,27 +188,36 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const chainId = request.nextUrl.searchParams.get('chainId')
     const railId = request.nextUrl.searchParams.get('rail')
     const deployment = getServerRailDeployment(chainId, railId)
-    if (!deployment.store) throw new Error('Store is not deployed')
+    if (!deployment.store) throw new ApiError('Store is not deployed', 503)
 
     if (await readProcessedOrder(deployment.chainId, orderId as Hex, deployment.railId)) {
       return new NextResponse('Order is already processed', { status: 409 })
     }
 
-    const body = (await request.json()) as Record<string, unknown>
+    const body = (await request.json().catch(() => {
+      throw new ApiError('Invalid JSON body')
+    })) as Record<string, unknown>
     const buyer = parseBuyer(body.buyer)
     const productId = parsePositiveInteger(body.productId, 'product id')
     const payProbabilityBps = parsePositiveInteger(body.payProbabilityBps, 'payment probability')
     const maxEscrow = parseBigIntString(body.maxEscrow, 'max escrow')
     const paymentTransactionHash = parseHex32(body.paymentTransactionHash, 'payment transaction hash')
 
-    await verifyEscrowPayment({
-      buyer,
-      chainId: deployment.chainId,
-      maxEscrow,
-      orderId: orderId as Hex,
-      paymentTransactionHash,
-      railId: deployment.railId,
-    })
+    // Escrow verification failures describe the caller's own submitted payment
+    // and carry no internal detail, so they are re-raised as caller-visible
+    // errors. The shop UI shows this text to the buyer.
+    try {
+      await verifyEscrowPayment({
+        buyer,
+        chainId: deployment.chainId,
+        maxEscrow,
+        orderId: orderId as Hex,
+        paymentTransactionHash,
+        railId: deployment.railId,
+      })
+    } catch (error) {
+      throw new ApiError(error instanceof Error ? error.message : 'Payment verification failed', 400)
+    }
 
     const epochId = await readCurrentEpochId(deployment.chainId, deployment.railId)
     const seed = deriveEpochSeed(deployment, epochId)
@@ -241,6 +266,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       processTransactionHash,
     })
   } catch (error) {
-    return new NextResponse(error instanceof Error ? error.message : 'Failed to process order', { status: 500 })
+    return apiErrorResponse(error, 'Failed to process order', 'POST /api/orders/[orderId]/process')
   }
 }
