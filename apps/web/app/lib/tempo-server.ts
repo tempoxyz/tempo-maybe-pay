@@ -49,7 +49,26 @@ type ExpireExpiredRedemptionsResult = {
   checkedTokenCount: number
   expiredTokenIds: string[]
   transactionHash?: Hex
+  /** True when the scan stopped at its cap before reaching the newest token. */
+  truncated?: boolean
 }
+
+/**
+ * Highest number of redemption slots inspected in one call.
+ *
+ * The scan issues one `eth_call` per token, sequentially. Left unbounded it grows
+ * with total minted supply forever, so a single request eventually becomes both a
+ * self-inflicted RPC flood and a request-timeout guarantee. Newest tokens are
+ * scanned first because a redemption has a deadline and older slots are either
+ * already expired or already settled.
+ */
+const MAX_REDEMPTION_SCAN = 500
+
+/** Redemption slots read concurrently within the scan. */
+const REDEMPTION_SCAN_CONCURRENCY = 20
+
+/** Highest number of token ids submitted in one `expireRedemptions` call. */
+const MAX_EXPIRE_BATCH = 100
 
 const transferWithMemoEventAbi = [
   {
@@ -500,29 +519,65 @@ export async function expireExpiredRedemptions(
   const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
   const expiredTokenIds: bigint[] = []
 
-  for (let tokenId = 1n; tokenId < nextTokenId; tokenId += 1n) {
-    const [value, deadline, active] = (await client.readContract({
-      abi: maybePayStoreAbi,
-      address: store,
-      args: [tokenId],
-      functionName: 'redemptions',
-    })) as RedemptionTuple
+  // Token ids run from 1 to nextTokenId - 1. Walk newest-first and stop at the
+  // cap so the RPC fan-out and wall-clock cost stay bounded regardless of supply.
+  const highestTokenId = nextTokenId > 0n ? nextTokenId - 1n : 0n
+  const scanCount = highestTokenId > BigInt(MAX_REDEMPTION_SCAN) ? BigInt(MAX_REDEMPTION_SCAN) : highestTokenId
+  const lowestScannedTokenId = highestTokenId - scanCount + 1n
+  const truncated = scanCount < highestTokenId
 
-    if (active && value > 0n && deadline > 0n && deadline < nowSeconds) {
-      expiredTokenIds.push(tokenId)
-    }
+  const candidateTokenIds: bigint[] = []
+  for (let tokenId = highestTokenId; tokenId >= lowestScannedTokenId && tokenId > 0n; tokenId -= 1n) {
+    candidateTokenIds.push(tokenId)
   }
+
+  // Read in bounded-size batches: sequential reads made latency scale linearly
+  // with the scan window, while an unbounded Promise.all over every token would
+  // reintroduce the same fan-out problem in parallel form.
+  for (let offset = 0; offset < candidateTokenIds.length; offset += REDEMPTION_SCAN_CONCURRENCY) {
+    const batch = candidateTokenIds.slice(offset, offset + REDEMPTION_SCAN_CONCURRENCY)
+    const redemptions = await Promise.all(
+      batch.map(
+        (tokenId) =>
+          client.readContract({
+            abi: maybePayStoreAbi,
+            address: store,
+            args: [tokenId],
+            functionName: 'redemptions',
+          }) as Promise<RedemptionTuple>,
+      ),
+    )
+
+    for (const [index, [value, deadline, active]] of redemptions.entries()) {
+      const tokenId = batch[index]
+      if (tokenId === undefined) continue
+      if (active && value > 0n && deadline > 0n && deadline < nowSeconds) {
+        expiredTokenIds.push(tokenId)
+      }
+    }
+
+    // Stop early once a full transaction batch is available; the remaining slots
+    // are picked up by the next call.
+    if (expiredTokenIds.length >= MAX_EXPIRE_BATCH) break
+  }
+
+  const checkedTokenCount = Number(scanCount)
 
   if (expiredTokenIds.length === 0) {
     return {
-      checkedTokenCount: Number(nextTokenId > 0n ? nextTokenId - 1n : 0n),
+      checkedTokenCount,
       expiredTokenIds: [],
+      truncated,
     }
   }
 
+  // Cap the calldata so one transaction cannot exceed the block gas limit and
+  // revert the whole batch.
+  const batchedTokenIds = expiredTokenIds.slice(0, MAX_EXPIRE_BATCH)
+
   const data = encodeFunctionData({
     abi: maybePayStoreAbi,
-    args: [expiredTokenIds],
+    args: [batchedTokenIds],
     functionName: 'expireRedemptions',
   })
   const receipt = await client.sendTransactionSync({
@@ -531,8 +586,9 @@ export async function expireExpiredRedemptions(
   } as never)
 
   return {
-    checkedTokenCount: Number(nextTokenId - 1n),
-    expiredTokenIds: expiredTokenIds.map((tokenId) => tokenId.toString()),
+    checkedTokenCount,
+    expiredTokenIds: batchedTokenIds.map((tokenId) => tokenId.toString()),
     transactionHash: receipt.transactionHash as Hex,
+    truncated: truncated || batchedTokenIds.length < expiredTokenIds.length,
   }
 }
